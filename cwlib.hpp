@@ -9,17 +9,20 @@
 #include "utils.hpp"
 #endif
 #include <fstream>
-void readFileToMem(const char* fname, char*& out) {
+int readFileToMem(const char* fname, char*& out) {
 
 	std::ifstream file(fname, std::ios::in | std::ios::binary | std::ios::ate);
 	if (file.is_open())
 	{
+		file.seekg(0, std::ios::end);
 		int size = file.tellg();
 		out = new char[size];
 		file.seekg(0, std::ios::beg);
 		file.read(out, size);
 		file.close();
+		return size;
 	}
+	return 0;
 }
 void _cpyCharArr(char*& from, char*& to, int start, int end) {
 	for (int iter = start; iter < end; ++iter) {to[iter] = from[iter];}
@@ -29,6 +32,7 @@ void _cpyCharArr(char*& from, char*& to, int start, int end) {
 
 struct cwlScene {
 private:
+	int FS_SIZE;
 	char* fs;
 	SDL_Surface* cwlSurf;
 	static cwlScene* inst;
@@ -37,17 +41,43 @@ private:
 	Vector2 _SIZE;
 	char HEAD_SIZE;
 	char VEC_SIZE = 2;
-	__int64 HEAD_IMG_LOC_IDENTIFIER = 0x31CF0AAEFCE2AAC2;
+	const char IMGF[8] = { 
+		(char)0x31,
+		(char)0xCF,
+		(char)0x0A,
+		(char)0xAE,
+		(char)0xFC,
+		(char)0xE2,
+		(char)0xAA,
+		(char)0xC2
+	};
+	const char ENDF[8] = { 
+		(char)0x66,
+		(char)0xAA,
+		(char)0x3A,
+		(char)0x35,
+		(char)0x86,
+		(char)0xED,
+		(char)0xA2,
+		(char)0xE2 
+	};
+	int IMG_OFFSET;
+	int FEND;
 public:
 	std::map<int, std::function<int()>> events;
 	std::map<int, bool*> event_triggers;
 	std::map<short int, Sprite*> entities;
 	MeshCollider2d* mesh;
 private:
-	void _cwlLoadF(const char*fn){readFileToMem(fn,fs);}
+	void _cwlLoadF(const char*fn){ // Load CWL file into memory
+
+		FS_SIZE = readFileToMem(fn,fs);
+	}
 	Vector2 _cwlVectorPair(int off) {
-		memcpy(&_SIZE.x, fs + off, VEC_SIZE);
-		memcpy(&_SIZE.y, fs + off+VEC_SIZE, VEC_SIZE);
+		Vector2 v;
+		memcpy(&v.x, fs + off, VEC_SIZE);
+		memcpy(&v.y, fs + off+VEC_SIZE, VEC_SIZE);
+		return v;
 	}
 	void _cwlLoadH() {
 		HEAD_SIZE =  fs[0]	  ;// First byte of CWL file should be 0-255 as to note how big the header is (in bytes)
@@ -56,18 +86,28 @@ private:
 		int HEAD_ITER = 1; // Start at 1.
 		_cpyCharArr(fs, header_data, 0, HEAD_SIZE);
 		if (strncmp(header_data, "CWL", 10)) {
-			HEAD_ITER += 4; // Assume next byte after CWL prefix is the size of a single vector in bytes.
-			std::cout << "CWLLib: Valid CWL prefix found.";
-			
+			HEAD_ITER += 4; // Assume next byte after CWL prefix is the size of a single vector in bytes. So we skip it.
+			_SIZE = _cwlVectorPair(HEAD_ITER);
+			for (int it = 10; it < FS_SIZE; it) {
+				
+				MeshLine l{ 
+					_cwlVectorPair(it),
+					_cwlVectorPair(it + VEC_SIZE) 
+				};
+				std::cout << "Created line at (from: " << l.start << " | to: " << l.end << ") at offset " << it<< $nl;
+				mesh->lines.push_back(l);
+
+				it += VEC_SIZE*4;
+			}
+
 		}
-	}
-	MeshLine _cwlMeshLinePair(int at) {
-		
 	}
 	void _cwlFree() {
 		delete[] fs;
 	}
 	void _cwlLoad(const char*fn) {
+		mesh = new MeshCollider2d();
+		mesh->layer = COL_WALL;
 		_cwlLoadF(fn);
 		_cwlLoadH();
 	}
@@ -76,7 +116,7 @@ public:
 		cwlScene::inst = this;
 	};
 	cwlScene(const char* c) {
-		std::cout << "CWLLib: Loading scene " << c << std::endl;
+		std::cout << "CWLLib: Loading scene " << c << $nl;
 		cwlScene::inst = this;
 		_cwlLoad(c);
 	};

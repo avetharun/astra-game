@@ -4,6 +4,9 @@
 #include <functional>
 #include "Vectors.hpp"
 #include "utils.hpp"
+#ifndef ENGINE_HPP
+#include "engine.hpp"
+#endif
 #include <boost/algorithm/string.hpp>
 #include <chrono>
 struct MeshLine {
@@ -155,7 +158,11 @@ public:
 			if (m->layer == layer || layer == -1) {
 				for (uint lo = 0; lo < m->lines.size(); lo++) {
 					MeshLine l = m->lines[lo];
-					bool o = lineLineV(start, end, -*Camera::GetInstance()->m_target + l.start, -*Camera::GetInstance()->m_target + l.end );
+					Vector2 s = l.start + -*Camera::GetInstance()->m_target;
+					Vector2 e = l.end + -*Camera::GetInstance()->m_target;
+					SDL_SetRenderDrawColor($win->SDL_REND, 0, 255, 0, 255);
+					SDL_RenderDrawLine($win->SDL_REND, s.x, s.y, e.x, e.y);
+					bool o = lineLineV(start, end, s, e);
 					if (o) {
 						hit.object = MeshCollider2d::_mGlobalColArr[li];
 						hit.start = start;
@@ -192,8 +199,10 @@ public:
 			if (m->layer == layer || layer == -1) {
 				for (uint lo = 0; lo < m->lines.size(); lo++) {
 					MeshLine l = m->lines[lo];
-					Vector2 s = l.start - *Camera::GetInstance()->m_target;
-					Vector2 e = l.end - *Camera::GetInstance()->m_target;
+					Vector2 s = l.start + -*Camera::GetInstance()->m_target;
+					Vector2 e = l.end + -*Camera::GetInstance()->m_target;
+					SDL_SetRenderDrawColor($win->SDL_REND, 0, 255, 0, 255);
+					SDL_RenderDrawLine($win->SDL_REND, s.x, s.y, e.x, e.y);
 					bool o = lineLineV(start, end, s, e);
 					if (o) {
 						hit.object = MeshCollider2d::_mGlobalColArr[li];

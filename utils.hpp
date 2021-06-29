@@ -1,6 +1,6 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
-#define noop __noop
+#define noop (void)__noop
 
 #pragma once
 #define bitset(d,nbit)   ((d) |=  (1<<(nbit)))
@@ -72,6 +72,7 @@ struct _RUNNABLE_ONSTARTExec {
 #define $nn $concat(unnamed_, __LINE__, __COUNTER__)
 #define $exec _RUNNABLE_ONSTARTExec $nn					/* Execute what's in brackets. */
 #define $win Window::WindowInstance						/* Get window instance */
+#define $nl '\n'
 #define uint unsigned int
 #define $terminate(b) ForceExit(b)
 bool cmpSDL_Rect(SDL_Rect one, SDL_Rect two) {
@@ -107,6 +108,14 @@ double inline __declspec (naked) __fastcall ffsqrt(double n)
 	_asm ret 8
 }
 
+enum col_types {
+	COL_WALL = 'WALL',
+	COL_SOLID = COL_WALL,
+	COL_PLAYER = 'PLR',
+	COL_ENT = 'ENT',
+	COL_TRG = 'TRG',
+	COL_ALL = -1
+};
 
 
 

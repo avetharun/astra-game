@@ -96,6 +96,7 @@ Window::Initializer $un{
 							setbit(player.data, 3, 0);
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 0, 25, COL_WALL, 35)) {
 								playerimg.uv = playerAnimFrames[3 * 4 + (int)char_anim_offset];
+								// We add 2 for... well a reason I have no idea about.
 								playerimg.transform.position.x += (speed+2) * Time.DeltaTime;
 							}
 						}
@@ -216,8 +217,8 @@ Window::Initializer $nn{
 				for (uint m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
 					for (uint l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
 						MeshLine line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
-						Vector2 s = line.start - *Camera::GetInstance()->m_target;
-						Vector2 e = line.end - *Camera::GetInstance()->m_target;
+						Vector2 s = line.start + -*Camera::GetInstance()->m_target;
+						Vector2 e = line.end + -*Camera::GetInstance()->m_target;
 						SDL_SetRenderDrawColor($win->SDL_REND, 0, 0, 255, 255);
 						SDL_RenderDrawLine($win->SDL_REND, s.x, s.y, e.x, e.y);
 					}

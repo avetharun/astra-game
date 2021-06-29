@@ -30,20 +30,8 @@ typedef __int64 int64;
 #include<stdarg.h>
 
 
-#ifndef PHYSICS_HPP // Include physics.hpp if it hasn't already.
-#include "physics.hpp"
-#endif
-#include "cwlib.hpp"
 
 
-enum col_types {
-	COL_WALL = 'WALL',
-	COL_SOLID = COL_WALL,
-	COL_PLAYER = 'PLR',
-	COL_ENT = 'ENT',
-	COL_TRG = 'TRG',
-	COL_ALL = -1
-};
 
 struct Window {
 private:
@@ -165,7 +153,6 @@ public:
 	SDL_Renderer* SDL_REND;
 	SDL_GLContext SDL_GLCTX; 
 	SDL_Texture* CSL_TEX;
-	cwlScene* CUR_SCENE;
 	long int data; // 8 byte wide data bit/byte storage for entire window. 
 								 // Can be modified using setbit() and respective functions in utils.h
 	bool fullscreen = false;
@@ -376,6 +363,7 @@ void Window::PostRenderInternal() {
 		/*(components[i] == NULL) ? noop :*/components[i]->PostRender();
 	}
 }
+#include "cwlib.hpp"
 #pragma endregion
 #define Keyboard Window::WindowInstance->keyboard
 #define Mouse Window::WindowInstance->mouse

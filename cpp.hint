@@ -1,0 +1,14 @@
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define ifdef_undef(name)
+#define $f [&]()
+#define $exec Window::Initializer func_##__TIMESTAMP__  /* Execute what's in brackets. */
+#define $nn unnamed_##__TIMESTAMP__						/* Unnamed variable/func. */
+#define $win *Window::WindowInstance					/* Get window instance */#define setbit(d, nbit, val) (val) ? bitset(d,nbit) : bitunset(d,nbit)
+#define setbit(d, nbit, val) \
+    (val) ? bitset(d,nbit) : bitunset(d,nbit)
+#define setbitbulk(d,start,end,val) \
+	for (int i = start; i < end; i++) { \
+		setbit(d, i, val); \
+	}

@@ -1,3 +1,6 @@
+#ifndef AST_E_KEYBINDINGS
+#define AST_E_KEYBINDINGS
+
 class Input {
 	public:
 	
@@ -212,3 +215,7 @@ class Input {
  int Input::K_RALT = 230; /**< alt gr; option */
  int Input::K_RGUI = 231; /**< windows; command (apple); meta */
 #pragma endregion
+
+
+
+#endif

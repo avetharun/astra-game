@@ -2,7 +2,7 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 #include <iosfwd>
-#include <sdl/SDL_mixer.h>
+#include <SDL2/SDL_mixer.h>
 #include <iostream>
 class AudioWAV {
 private:

@@ -81,6 +81,12 @@ struct Vector2 {
 		os << o.x << ", " << o.y;
 		return os;
 	}
+	operator const char* () {
+		std::ostringstream _s;
+		_s << x << ", " << y;
+		auto x = _s.str();
+		return x.c_str();
+	}
 	static Vector2 distance(Vector2 one, Vector2 two) {
 		return one - two;
 	}
@@ -89,6 +95,7 @@ struct Vector2 {
 Vector2 Vector2::up = Vector2{ 0,1 };
 Vector2 Vector2::right = Vector2{ 1,0 };
 struct VectorRect {
+	static SDL_Rect _emptyRect;
 	Vector w = 1;
 	Vector h = 1;
 	Vector x = 0;
@@ -126,6 +133,7 @@ struct VectorRect {
 		return os;
 	}
 };
+SDL_Rect VectorRect::_emptyRect = SDL_Rect{ 0, 0, 0, 0 };
 struct Vector3 {
 	Vector x;
 	Vector y;
@@ -148,6 +156,6 @@ struct Vector3 {
 
 struct Transform {
 	Vector2 position;
-	Vector angle = 0;
-	SDL_Rect* rect;
+	Vector angle;
+	Vector2 scale;
 };

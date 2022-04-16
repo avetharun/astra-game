@@ -11,10 +11,8 @@
 #pragma warning (disable:4244)
 #include <stdlib.h>
 #undef APIENTRY
-#include <gl/glfw3.h>
-#undef APIENTRY
 #include <Windows.h>
-#include <sdl/SDL.h>
+#include <SDL2/SDL.h>
 #include <chrono>
 #include <vector>
 #include <thread>
@@ -28,10 +26,14 @@ typedef __int16 int16;
 typedef __int32 int32;
 typedef __int64 int64;
 #include<stdarg.h>
+#include <string.h> /* for strchr() */
 
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_sdl.h"
+#include "imgui/imgui_impl_sdlrenderer.h"
 
-
-
+#include "cwlib/cwlib.hpp"
+#include "e_keybindings.h"
 
 struct Window {
 private:
@@ -53,7 +55,7 @@ public:
 	std::function< void() > OnFocus = [] {noop; };			// 
 	std::function< void() > OnFocusLost = [] {noop; };		// 
 	struct Component {
-		int32 data = INT32_MAX;
+		int64_t data = B64(00000000,00000000,00000000,00000000, 00000000, 00000000, 00000000, 00000000);
 		std::function< void() > Start = [] {noop;};			// Code to run before first frame
 		std::function< void() > PreUpdate = [] {noop; };		// Code to run before every frame
 		std::function< void() > Update = [] {noop;};			// Code to run every frame
@@ -71,23 +73,22 @@ public:
 	};
 	struct Time {
 		float TimeSinceStart = 0;
-		float DeltaTime = 0;
+		static long double DeltaTime;
 		struct Timer {
 		private: 
 			std::chrono::steady_clock::time_point _start;
 			std::chrono::steady_clock::time_point _end;
 		public:
-			float Elapsed;
+			std::chrono::duration<long double, std::milli> Elapsed;
 			void Start() {
 				_start = std::chrono::high_resolution_clock::now();
 			}
 			void End() {
 				_end = std::chrono::high_resolution_clock::now();
-				Elapsed = std::chrono::duration_cast<std::chrono::seconds>(_end - _start).count();
+				 Elapsed = _end - _start;
 			}
 		};
 	};
-
 	struct Initializer {
 		Initializer(std::function<void()> initFunc) {  
 			initFunc();
@@ -99,10 +100,10 @@ public:
 		}
 	};
 	struct Keyboard {
-		char keys[1024];
-		std::function <void(unsigned char, char*)> onKeyPress = [](  unsigned char,  char* = keys) {};
-		std::function <void(unsigned char, char*)> onKeyRelease = [](unsigned char,  char* = keys) {};
-		std::function <void(unsigned char, char*)> onKeyHold = [](   unsigned char,  char* = keys) {};
+		char keys[1024]{};
+		std::function <void(unsigned char, char*)> onKeyPress = [](  unsigned char,  char*) {};
+		std::function <void(unsigned char, char*)> onKeyRelease = [](unsigned char,  char*) {};
+		std::function <void(unsigned char, char*)> onKeyHold = [](   unsigned char,  char*) {};
 
 		void KeyboardDown(unsigned char key, SDL_Event ev) {
 			keys[key] = true + true;
@@ -124,8 +125,7 @@ public:
 		bool m1d;
 		bool m2d;
 	};
-#pragma endregion
-	#pragma region Window::Variables
+	bool hasFocus;
 	Mouse mouse;
 	Keyboard keyboard;
 	std::vector<Component*> components;
@@ -137,7 +137,7 @@ public:
 		components.shrink_to_fit();
 	}
 	// The above two operators can be used by end-user, though it's easiest to use AddComponent.
-	// Otherwise, you would need to do *$win<<&(component), or *Window::GetInstance()<<&(component)
+	// Otherwise, you would need to do *Win<<&(component), or *Window::GetInstance()<<&(component)
 	bool running = true;
 	private: bool started = false;
 public:
@@ -145,6 +145,7 @@ public:
 	Time time;
 	std::vector<std::thread> workers;
 	unsigned char* consolepx;
+	ImGuiIO io;
 	HWND hwnd;
 	HDC hdc;
 	Vector2 size;
@@ -153,8 +154,7 @@ public:
 	SDL_Renderer* SDL_REND;
 	SDL_GLContext SDL_GLCTX; 
 	SDL_Texture* CSL_TEX;
-	long int data; // 8 byte wide data bit/byte storage for entire window. 
-								 // Can be modified using setbit() and respective functions in utils.h
+	unsigned long long data = 0; // 8 byte wide data bit/byte storage for entire window. 
 	bool fullscreen = false;
 	Window(HWND console /* Text drawing base, unused. */, bool fullscreen /* Is game in fullscreen? */, const char* name, int width = 720, int height = 720) {
 		WindowInstance = this;
@@ -193,21 +193,27 @@ public:
 			std::cout << "SDL_Image version : " << SDL_IMAGE_MAJOR_VERSION << "." << SDL_IMAGE_MINOR_VERSION << "." << SDL_IMAGE_PATCHLEVEL << std::endl;
 		#endif
 
-
 		SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 		hdc = GetDC(hwnd);
-		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, SDL_WINDOW_OPENGL);
+		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, (SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI));
 		hwnd = ::GetActiveWindow();
-		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED);
+		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 		SDL_SetRenderDrawBlendMode(SDL_REND, SDL_BLENDMODE_BLEND);
 		SDL_GLCTX = SDL_GL_CreateContext(SDL_WIND);
 		
 		initRenderer(SDL_REND, SDL_WIND);
 		size = Vector2(width, height);
+
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		ImGui::StyleColorsDark();
+		ImGui_ImplSDL2_InitForSDLRenderer(SDL_WIND);
+		ImGui_ImplSDLRenderer_Init(SDL_REND);
+
+		//HideConsole();
+
 	};
 	Vector2 center = Vector2{size.x /2, size.y/2};
-#pragma endregion
-	#pragma region Window::Funcs
 	void StartInternal();
 	void PreUpdateInternal();
 	void UpdateInternal();
@@ -216,14 +222,110 @@ public:
 	void PostRenderInternal();
 
 
+
+
+
+	CWLScene* scene;
+	struct Console {
+		char debugWindowInput[512]{};
+		ImGuiTextBuffer debugWindowConsoleText;
+		int m_scrollToBottom = false;
+		void pushuf(std::string cstr) {
+			cstr.push_back('\n');
+			debugWindowConsoleText.append(cstr.c_str());
+			m_scrollToBottom = 10;
+		}
+		void pushf(std::string fmt, ...) {
+			if (&debugWindowConsoleText == nullptr) { return; }
+			va_list args;
+			va_start(args, fmt);
+			fmt.push_back('\n');
+			debugWindowConsoleText.appendfv(fmt.c_str(), args);
+			va_end(args);
+			m_scrollToBottom = 10;
+
+		}
+
+
+		std::map < std::string, std::function<void(const char*)> > commands{
+			{"echo",[&](const char* _v) {
+				if (_v[0] == '\0') {
+					return;
+				}
+				pushuf(_v); 
+			} },
+			{"help", [&](const char* _v) {
+				if (_v[0] == '\0') {
+					pushuf("Please input a valid command!");
+				}
+			}},
+			{"clear", [&](const char* unused) {
+				debugWindowConsoleText.clear();
+			}}
+		};
+
+
+		void handlecmdf(std::string cmd, char* _cmd_args) {
+			if (commands.find(cmd) == commands.end()) {
+				pushf("Command %s not found!", cmd.c_str());
+				return;
+			}
+			commands.at(cmd)(_cmd_args);
+		}
+	};
+	Console cons{};
+	bool debug_window_open = false;
+
+	void DebugWindow() {
+		ImGui::Begin("Debug Console");
+		ImGui::BeginChildFrame(10, {0,ImGui::GetWindowHeight() - 75});
+		ImGui::TextUnformatted(cons.debugWindowConsoleText.begin());
+		if (cons.m_scrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+			ImGui::SetScrollHereY(1.0f);
+			cons.m_scrollToBottom--;
+		}
+
+		ImGui::EndChildFrame();
+		if (ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemActive() && !ImGui::IsMouseClicked(0))
+			ImGui::SetKeyboardFocusHere(0);
+		bool _isEnterPressed = ImGui::InputText("##consInput", cons.debugWindowInput, 512, ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::SameLine();
+		bool _isSendPressed = ImGui::Button("Send");
+		if (_isEnterPressed || _isSendPressed) {
+			std::string inputCommand(cons.debugWindowInput);
+			std::string::size_type cmdend = inputCommand.find(' ');
+			if (cmdend != std::string::npos) {
+				inputCommand = inputCommand.substr(0, cmdend);
+				cons.handlecmdf(inputCommand, cons.debugWindowInput + cmdend + 1);
+			}
+			cons.handlecmdf(inputCommand, (char*)"\0");
+
+			// resets input text
+			memset(cons.debugWindowInput, 0, 512);
+		}
+		debug_window_open = ImGui::IsWindowFocused();
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::End();
+		
+	}
+
 	void RenderInternal() {
+		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
+		// Fullbright enabled?
+		if (getbitv(data, 1)) {
+			SDL_SetRenderDrawColor(SDL_REND, 128, 128, 128, 255);
+		}
+		SDL_RenderClear(SDL_REND);
 		BatchRenderer().Render();
 		PostPreRender();
+		ImGui::Render();
+		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		SDL_RenderPresent(SDL_REND);		
 	}
 	void procEvent() {
 		while (SDL_PollEvent(&sdlevent))
 		{
+			ImGui_ImplSDL2_ProcessEvent(&sdlevent);
 			switch (sdlevent.type)
 			{
 			default: break;
@@ -242,6 +344,7 @@ public:
 				break;
 			case SDL_WINDOWEVENT_FOCUS_LOST:
 				this->OnFocusLost();
+				this->hasFocus = false;
 				break;
 			case SDL_WINDOWEVENT_MAXIMIZED:
 				this->OnMaximize();
@@ -250,8 +353,9 @@ public:
 				this->OnMinimize();
 				break;
 			case SDL_WINDOWEVENT_FOCUS_GAINED:
-					this->OnFocus();
-					break;
+				this->OnFocus();
+				this->hasFocus = true;
+				break;
 			case SDL_KEYDOWN:
 				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_INPUT_FOCUS) {
 					keyboard.KeyboardDown(sdlevent.key.keysym.scancode, sdlevent);
@@ -274,6 +378,7 @@ public:
 
 
 	void IdleFuncInternal() {
+		auto start = std::chrono::high_resolution_clock::now();
 		if (!started) {
 			started = true;
 			Start();
@@ -281,7 +386,6 @@ public:
 				/*(components[i] == NULL) ? noop :*/components[i]->Start();
 			}
 		}
-		auto start = std::chrono::high_resolution_clock::now();
 		RECT rect;
 		if (GetWindowRect(hwnd, &rect))
 		{
@@ -294,10 +398,23 @@ public:
 		center = Vector2{ size.x / 2, size.y / 2 };
 		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
 		SDL_RenderClear(SDL_REND);
+
+
+		ImGui_ImplSDLRenderer_NewFrame();
+		ImGui_ImplSDL2_NewFrame(SDL_WIND);
+		ImGui::NewFrame();
+
+
+
 		PreUpdateInternal();
 		UpdateInternal();
 		PostUpdateInternal();
 		PreRenderInternal();
+
+		if (getbitv(data, 12)) {
+			DebugWindow();
+		}
+
 		RenderInternal();
 		Camera::GetInstance()->Update();
 		PostRenderInternal();
@@ -317,9 +434,7 @@ public:
 			}
 		}
 		auto end = std::chrono::high_resolution_clock::now();
-
-		time.DeltaTime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() * .00001f;
-		
+		time.DeltaTime = std::chrono::duration<long double, std::milli>(end - start).count();
 	}
 	void AddComponent(Component* c) {
 		*this << c;
@@ -327,7 +442,6 @@ public:
 	void RemoveComponent(Component* c) {
 		*this >> c;
 	};
-#pragma endregion
 };
 
 
@@ -363,10 +477,12 @@ void Window::PostRenderInternal() {
 		/*(components[i] == NULL) ? noop :*/components[i]->PostRender();
 	}
 }
-#include "cwlib.hpp"
+long double Window::Time::DeltaTime = 0.0;
+#include "cwlib/cwlib.hpp"
 #pragma endregion
 #define Keyboard Window::WindowInstance->keyboard
 #define Mouse Window::WindowInstance->mouse
 #define WindowRenderer Window::WindowInstance->SDL_REND
 #define Time Window::WindowInstance->time
+#define Win Window::WindowInstance
 #endif

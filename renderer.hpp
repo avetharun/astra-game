@@ -1,11 +1,10 @@
 #if !defined(RENDERER_HPP)
 #define RENDERER_HPP
-#pragma once
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include <functional>
 #include <iostream>
-#include <sdl/SDL_image.h>
+#include <SDL2/SDL_image.h>
 #include <vector>
 #include <map>
 #include "utils.hpp"
@@ -15,13 +14,23 @@
 #include <typeinfo>
 #include <typeindex>
 #include <math.h>
+#include <algorithm>
+
+#include <luaaa.hpp>
+#include "lua.hpp"
+
+
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
+
+
 void initRenderer(SDL_Renderer* r, SDL_Window* w) {
 	SDL_REND_RHPP = r;
 	SDL_WIND_RHPP = w;
 
 }
+
+
 
 SDL_Color getrgb(SDL_Surface* surface, Uint32 px) {
 	SDL_Color rgb;
@@ -78,43 +87,41 @@ struct Sprite{
 	 * \param ..
 	 */
 	char params;
+	const char* name = nullptr;
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
 	int layer = -10;
 	bool enableCameraOffset = false; // Enables/disables if camera::m_Offset will offset sprite position.
 	static std::vector<Sprite*> _mglobalspritearr;
+	bool center = false;
 	
 	Sprite() {
-		_mglobalspritearr.push_back(this);
+		_mglobalspritearr.push_back(this); 
+		rect = (SDL_Rect*)malloc(sizeof(struct SDL_Rect));
+		surf = SDL_CreateRGBSurface(0, 32, 32, 32, 0, 0, 0, 0);
 	};
 	SDL_Surface* surf{};
-	Vector2 size;
 	unsigned char* pixels = nullptr;
 	int channels = 4;
-	SDL_Rect uv;
-	void operator ~() {
-		SDL_FreeSurface(surf);
-	}
+	SDL_Rect uv{};
 	void unlockCamera() {
-		setbit(params, 0, 0);
+		setbitv(params, 0, 0);
 	}
 	void lockCamera() {
-		setbit(params, 0, 1);
+		setbitv(params, 0, 1);
 	}
+	Vector2 center_position{};
+	Vector2 _offset{};
+	Vector2 _cameraViewOffset{};
+	Vector2 origin{};
+	SDL_Rect* rect {nullptr};
+	Transform transform{};
 
-	Vector2 center_position;
-	Vector2 _offset;
-	SDL_Rect _rect;
-	Vector2 _cameraViewOffset; 
-	SDL_Rect* rect;
-	struct Transform{
-		Vector2 position;
-		Vector angle;
-	};
-	Sprite::Transform transform;
+
+
 	void Update() {
-		if (getbit(params, 0)) {
+		if (getbitv(params, 0)) {
 			_offset = Vector2(
 				Camera::GetInstance()->m_Viewport.x / 2,
 				Camera::GetInstance()->m_Viewport.y / 2
@@ -128,21 +135,31 @@ struct Sprite{
 		if (enableCameraOffset) {
 			_offset += Camera::GetInstance()->m_Offset;
 		}
-		rect->x =(int)_offset.x-size.x/2;
-		rect->y =(int)_offset.y-size.y/2;
-		rect->w =(int)size.x;
-		rect->h =(int)size.y;
+		if (!SUCCEEDED(rect)) {
+			rect = new SDL_Rect();
+		}
+		rect->x =(int)_offset.x;
+		rect->y =(int)_offset.y;
+		rect->w = (int)transform.scale.x;
+		rect->h = (int)transform.scale.y;
+		if (center) {
+			rect->x = (int)_offset.x - (transform.scale.x / 2);
+			rect->y = (int)_offset.y - (transform.scale.y / 2);
+		}
 		// To center the actual sprite, we offset it by -half size
 		center_position = Vector2(
 			rect->x + rect->w / 2,
 			rect->y + rect->h / 2
 		);
 	};
+	bool manualDraw = false;
+
 	/*
 	* \brief Draws to screen immediately. You can run this, or let the batch renderer do its thing. Either works.
 	* 
 	*/
 	void Draw() {
+		if (!enabled && !manualDraw) { return; }
 		Update();
 		/* Not working, don't use commented out below. */
 		/*
@@ -153,7 +170,7 @@ struct Sprite{
 				(int)Camera::GetInstance()->m_Viewport.x,
 				(int)Camera::GetInstance()->m_Viewport.y
 		};
-		if (!VectorRect::checkCollision(&bounds, &rect) && getbit(params,0)) {
+		if (!VectorRect::checkCollision(&bounds, &rect) && getbitv(params,0)) {
 #ifdef COUT_DEBUG
 			std::cout << "Not rendering sprite at position: " << transform.position << " because it's off screen of camera at " <<
 				Camera::GetInstance()->m_Position << " with viewport " << Camera::GetInstance()->m_Viewport << '\n';
@@ -162,22 +179,25 @@ struct Sprite{
 
 		}*/
 		int SDL_FLIP_V = SDL_FLIP_NONE;
-		SDL_Rect r = SDL_Rect{ 
+		SDL_Rect r = SDL_Rect{
 			rect->x,
 			rect->y,
-			abs(size.x) == 0? surf->w*3:abs(size.x) ,
-			abs(size.y) == 0? surf->h*3:abs(size.y) ,
+			abs(transform.scale.x) == 0? surf->w*3:abs(transform.scale.x) ,
+			abs(transform.scale.y) == 0? surf->h*3:abs(transform.scale.y) ,
 		};
-		if (size.x < 0) {
+		SDL_Point _origin = SDL_Point{ origin.x, origin.y };
+		if (transform.scale.x < 0) {
 			SDL_FLIP_V |= SDL_FLIP_VERTICAL;
+			transform.scale.x *= -1;
 		}
-		if (size.y < 0) {
+		if (transform.scale.y < 0) {
 			SDL_FLIP_V |= SDL_FLIP_HORIZONTAL;
+			transform.scale.y *= -1;
 		}
 		SDL_Texture* Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);
-		if (&uv == nullptr || cmpSDL_Rect(uv, SDL_Rect{0, 0, 0, 0}))
+		if (&uv == nullptr || VectorRect::checkCollision(&uv, &VectorRect::_emptyRect))
 		{
-			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, &r, transform.angle, NULL, (SDL_RendererFlip)SDL_FLIP_V) < 0)
+			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, &r, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
 				? []() {std::cout << SDL_GetError() << '\n'; }() : noop;
 		}
 		else {
@@ -189,35 +209,141 @@ struct Sprite{
 	}
 
 	
-
+	void operator ~() {
+		auto s_sf = surfFilemaps;
+		// the pixels variable won't be initialized if it's invalid. If so, ignore it and just remove this object.
+		s_sf.erase(name);
+		auto sv = Sprite::_mglobalspritearr;
+		sv.erase(std::remove(sv.begin(), sv.end(), this), sv.end());
+		
+		SDL_FreeSurface(surf);
+		RtlZeroMemory(this, sizeof(struct Sprite));
+		
+	}
 
 	Sprite(const char* filename, SDL_Rect spriteuv = SDL_Rect{ 0,0,0,0 }) {
+		name = filename;
 		uv = spriteuv;
 		layer = 0;
-		rect = &_rect;
 		_mglobalspritearr.push_back(this);
 		_cameraViewOffset = Vector2(0, 0);
 		unlockCamera();
 		std::map<const char*, SDL_Surface*>::iterator it = surfFilemaps.find(filename);
-		if (it != surfFilemaps.end())
+		if (it == surfFilemaps.end())
 		{
-			surf = surfFilemaps[filename];
-			return;
-		}
-		surf = loadImage(filename);
-		if (surf == nullptr) {
-			std::cout << "Surface null in build source " << __FILE__ << " with surface file: " << filename << std::endl;
-			ForceExit();
-			return;
-		}
-		#if defined (COUT_DEBUG)
+			surf = loadImage(filename);
+			if (surf == nullptr) {
+				std::cout << "Surface null in build source " << __FILE__ << " with surface file: " << filename << std::endl;
+				exit(-100);
+				return;
+			}
 			std::cout << "Created surface from " << filename << " with " << (int)surf->format->BytesPerPixel << " channels with report of " << IMG_GetError() << '\n';
-		#endif
-		surfFilemaps.emplace(filename, surf);
+			surfFilemaps.emplace(filename, surf);
+		}
+		else {
+			surf = surfFilemaps[filename];
+			std::cout << "Created surface from pre existing sprite at " << filename << " with " << (int)surf->format->BytesPerPixel << " channels with report of " << IMG_GetError() << '\n';
+		}
+		if (uv.x == 0 && uv.y == 0 && uv.w == 0 && uv.h == 0) {
+			uv = { 0,0, surf->w, surf->h };
+		}
+		transform.scale = Vector2(uv.w, uv.h);
+		rect = (SDL_Rect*)malloc(sizeof(struct SDL_Rect));
+		return;
 	}
-
+	static Sprite * newInstance(const char* f) {
+		return new Sprite(f);
+	}
+	Vector2 getPosition() {
+		return transform.position;
+	}
+	Vector getRotation() {
+		return transform.angle;
+	}
+	Vector2 getScale() {
+		return transform.scale;
+	}
+	void Scale(Vector2 scaleAmt) {
+		this->transform.scale.x *= scaleAmt.x;
+		this->transform.scale.y *= scaleAmt.y;
+	}
+	void Move(Vector2 moveAmt) {
+		this->transform.position.x += moveAmt.x;
+		this->transform.position.y += moveAmt.y;
+	}
+	void SetTransform(Transform _transform) {
+		this->transform = _transform;
+	}
+	void Rotate(int amt) {
+		this->transform.angle += amt;
+	}	
+	void setEnabled(bool val) {
+		this->enabled = val;
+	}
+	std::list<int> luaGetScale() {
+		return {this->transform.scale.x, this->transform.scale.y};
+	}
+	std::list<int> luaGetPosition() {
+		return { this->transform.position.x, this->transform.position.y };
+	}
+	int luaGetRotation() {
+		return transform.angle;
+	}
+	void luaScale(std::vector<int> _scal) {
+		if (_scal.size() < 2) {
+			luaL_error(_lstate, "Error: Scale requires two values, amount of values used: %i", _scal.size());
+			return;
+		}
+		this->Scale({ _scal[0], _scal[1] });
+	}
+	static Sprite* luaNew(const std::string& file) {
+		return new Sprite(file.c_str());
+	}
 };
 std::vector<Sprite*> Sprite::_mglobalspritearr = std::vector<Sprite*>();
+
+struct Object : private Sprite {
+	Sprite* sprite = nullptr;
+	SDL_Rect* collider;
+private:
+	Vector2 rect;
+	bool enabled = false;
+public:
+	Transform transform;
+
+
+
+	void UpdateInternal() {
+		rect.x = transform.position.x;
+		rect.y = transform.position.y;
+
+		if (sprite != nullptr) {
+			sprite->transform = this->transform;
+			sprite->setEnabled(this->enabled);
+		}
+	}
+	void AssignSprite(const Sprite & _s) {
+		sprite = (Sprite*) & _s;
+	}
+	void RemoveSprite() {
+		sprite->operator~();
+		sprite = nullptr;
+	}
+	void Move(Vector2 const& amt) {
+		this->transform.position.x += amt.x;
+		this->transform.position.y += amt.y;
+	}
+	void Rotate(int const& amt) {
+		this->transform.angle += amt;
+	}
+	void SetTransform(Transform const& _transform) {
+		this->transform = _transform;
+	}
+	void_0a_f* UpdateFunc;
+	void setUpdateF(void_0a_f * _f) {
+		this->UpdateFunc = _f;
+	}
+};
 
 struct BatchRenderer {
 	void Render() {
@@ -228,6 +354,10 @@ struct BatchRenderer {
 		);
 		for (unsigned int i = 0; i < Sprite::_mglobalspritearr.size(); i++) {
 			Sprite* s = Sprite::_mglobalspritearr[i];
+			if (s == NULL || s == nullptr || &s->pixels == NULL) {
+				Sprite::_mglobalspritearr.erase(Sprite::_mglobalspritearr.begin() + i);
+				continue;
+			}
 			(s->enabled) ? s->Draw() : noop ;
 		}
 

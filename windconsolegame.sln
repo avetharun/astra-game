@@ -1,9 +1,14 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30804.86
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32328.378
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "windconsolegame", "windconsolegame.vcxproj", "{5574E677-0075-4D1D-9EA8-C495A0FA0A0F}"
+	ProjectSection(ProjectDependencies) = postProject
+		{110035F0-8B62-44A4-A24C-E997BC856C5F} = {110035F0-8B62-44A4-A24C-E997BC856C5F}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "copyassets", "copyassets\copyassets.vcxproj", "{110035F0-8B62-44A4-A24C-E997BC856C5F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,6 +34,22 @@ Global
 		{5574E677-0075-4D1D-9EA8-C495A0FA0A0F}.Release|x64.Build.0 = Release|x64
 		{5574E677-0075-4D1D-9EA8-C495A0FA0A0F}.Release|x86.ActiveCfg = Release|Win32
 		{5574E677-0075-4D1D-9EA8-C495A0FA0A0F}.Release|x86.Build.0 = Release|Win32
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|ARM.ActiveCfg = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|ARM.Build.0 = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|ARM64.ActiveCfg = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|ARM64.Build.0 = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|x64.ActiveCfg = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|x64.Build.0 = Debug|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|x86.ActiveCfg = Debug|Win32
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Debug|x86.Build.0 = Debug|Win32
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|ARM.ActiveCfg = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|ARM.Build.0 = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|ARM64.ActiveCfg = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|ARM64.Build.0 = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|x64.ActiveCfg = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|x64.Build.0 = Release|x64
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|x86.ActiveCfg = Release|Win32
+		{110035F0-8B62-44A4-A24C-E997BC856C5F}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

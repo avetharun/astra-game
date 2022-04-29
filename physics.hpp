@@ -15,18 +15,40 @@ enum _ColIDs : unsigned char{
 	COL_ENT =			B8(00001000),
 	COL_OBJ =			B8(00010000),
 	COL_TRG =			B8(00100000),
-	COL_SOLID =			B8(01000000)
+	COL_SOLID =			B8(01000000),
+	COL_FUNC =			B8(10000000)
 };
+const char* coltohr(unsigned char id) {
+	switch (id) {
+	default:
+	case COL_EMPTY:
+		return "COL_EMPTY";
+	case COL_PLAYER:
+		return "COL_PLAYER";
+	case COL_ENT:
+		return "COL_ENT";
+	case COL_OBJ:
+		return "COL_OBJ";
+	case COL_TRG:
+		return "COL_TRG";
+	case COL_SOLID:
+		return "COL_SOLID";
+	case COL_FUNC:
+		return "COL_FUNC";
+	}
+}
 #include <chrono>
 struct MeshLine {
 	Vector2 start;
 	Vector2 end;
 	unsigned char layer;
+	uint64_t coll_id;
 };
 
-struct MeshCollider2d {
 
-	std::function< void(MeshCollider2d*) > OnColliderHit = [](MeshCollider2d* other) {};
+
+struct MeshCollider2d {
+	std::function< void(MeshLine*) > OnColliderHit = [](MeshLine* other) {};
 	std::vector<MeshLine> lines;
 	static std::vector<MeshCollider2d*> _mGlobalColArr;
 	MeshCollider2d(std::vector<MeshLine> Lines, int Layer = 1) {
@@ -46,15 +68,24 @@ struct MeshCollider2d {
 
 };
 
+
 std::vector<MeshCollider2d*> MeshCollider2d::_mGlobalColArr = std::vector<MeshCollider2d*>();
 struct RectCollider2d {
 
-	int layer = -1;
-	SDL_Rect* rect = {};
-	std::function< void(RectCollider2d* ) > OnColliderHit = [](RectCollider2d* other) {};
+	char layer = -1;
+	uint64_t coll_id;
+	SDL_Rect* rect_cs = new SDL_Rect();
+	SDL_Rect* rect = new SDL_Rect();
+
+
+	std::function< void(RectCollider2d*) > OnColliderHit = [](RectCollider2d* other) {};
 	static std::vector<RectCollider2d*> _mGlobalColArr;
 	RectCollider2d(SDL_Rect* Rect, int Layer = 1) {
-		rect = Rect;
+		*rect = { Rect->x, Rect->y, Rect->w, Rect->h };
+		*rect_cs = {Rect->x, Rect->y, Rect->w, Rect->h};
+		if (rect_cs == nullptr) {
+			rect_cs = new SDL_Rect();
+		}
 		if (rect == nullptr) {
 			rect = new SDL_Rect();
 		}
@@ -96,7 +127,10 @@ std::vector<RectCollider2d*> RectCollider2d::_mGlobalColArr = std::vector<RectCo
  *  \param ..
  */
 struct Raycast2D {
-
+	static bool RectIntersects(SDL_Rect* r1, SDL_Rect* r2) {
+		SDL_Rect r; // unused
+		return SDL_IntersectRect(r1, r2, &r);
+	}
 	struct RaycastHit {
 		Vector2 pos;
 		void* object;
@@ -190,7 +224,9 @@ public:
 		}
 		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !hit.hasHit; i++) {
 			if (RectCollider2d::_mGlobalColArr[i]->layer == layer || layer == -1) {
-				bool o = lineRect(start, end, RectCollider2d::_mGlobalColArr[i]->rect);
+				SDL_Rect* r = RectCollider2d::_mGlobalColArr[i]->rect_cs;
+
+				bool o = lineRect(start, end, r);
 				if (o) {
 					hit.object = RectCollider2d::_mGlobalColArr[i];
 					hit.start = start;
@@ -230,7 +266,7 @@ public:
 		}
 		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !hit.hasHit; i++) {
 			if (RectCollider2d::_mGlobalColArr[i]->layer == layer || layer == -1) {
-				bool o = lineRect(start, end, RectCollider2d::_mGlobalColArr[i]->rect);
+				bool o = lineRect(start, end, RectCollider2d::_mGlobalColArr[i]->rect_cs);
 				if (o) {
 					hit.object = RectCollider2d::_mGlobalColArr[i];
 					hit.start = start;

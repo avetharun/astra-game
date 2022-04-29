@@ -21,11 +21,9 @@ Window* window = Window::WindowInstance;
 #include <luaaa.hpp>
 #include "asl.hpp"
 
-Sprite playerimg = Sprite("sprites.png");
+Sprite playerimg = Sprite("sprites/sprites.png");
 
-Sprite OVERLAY_IMG = Sprite("sprites.png", SDL_Rect{ 0,91, 256,256});
-
-RectCollider2d playerCollider  { playerimg.rect, COL_PLAYER };
+RectCollider2d playerCollider = RectCollider2d(playerimg.rect, COL_PLAYER);
 Window::Component player;
 const int uvpw = 24;
 const int uvph = 42;
@@ -49,18 +47,22 @@ SDL_Rect playerAnimFrames [32] = {
 };
 float char_anim_offset;
 
-
+ABT playerdata;
 /* Player initializer function  */
 Window::Initializer $un{
 	[]() {
-//		HideConsole();
+
+
+		alib_show_console();
 		cwError::onError = [](const char* errv, uint32_t errs) {
-			if (errs == cwError::CW_SILENT) {
+			if (errs == cwError::CW_MESSAGE) {
 				Win->cons.pushuf(errv);
 				return;
 			}
 			Win->cons.pushf("%s|%s", cwError::wtoh(errs), errv);
 		};
+
+
 		/*
 		
 		if (HEAD_SIZE < 68) {
@@ -83,6 +85,10 @@ Window::Initializer $un{
 			playerimg.lockCamera();
 			playerimg.enabled = false;
 			playerimg.center = true;
+			playerimg.setID("ent_player");
+			playerCollider.rect = *&playerimg.rect;
+			playerCollider.rect_cs = *&playerimg.rect;
+
 
 			initDataLua(&playerimg);
 
@@ -95,25 +101,39 @@ Window::Initializer $un{
 			* bit 4: interacting with something
 			* bit 5: closing interaction
 			* bit 6: sprinting
-			* bit 7: unused/padding
-			* bit 8-12: player animation frame offset
-			* bit 13: unused/padding
+			* bit 7-13: padding
 			* bit 14: walking?
 			* bit 15: noclip enabled?
 			*/
 			player.data = INT64_MAX;
+			
 			setbitv(player.data, 15, 0);
-
-			Win->cons.commands.insert({ "tp", [&](const char* _pos) noexcept {
-				cwError::sstate(cwError::CW_ERROR);
-				cwError::serror("The tp command is disabled until a problem when parsing input is fixed!!");
-				return;
+			Win->cons.commands.insert({ "addcond", [&](const char* condition_args) {
+				std::cout << condition_args << '\n';
+				std::vector<std::string> args = alib_split(condition_args, ' ');
+				if (args.size() < 2) {
+					cwError::sstate(cwError::CW_ERROR);
+					cwError::serrof("Addcond requires 2 arguments! Supplied: %d", args.size() );
+					return;
+				}
+				player.conds.insert({ args.at(0), std::stoi(args.at(1)) });
+			  } 
+			});
+			Win->cons.commands.insert({ "cl_debug", [&](const char* _args) {
+				std::vector<std::string> _argsv;
+				alib_split_quoted(_args, &_argsv);
+				if (_argsv.size() >= 1) {
+					int state = atoi(_argsv.at(0).c_str());
+					cwError::debug_enabled = state;
+				}
+			  } 
+			});
+			Win->cons.commands.insert({ "tp", [&](const char* _pos) {
 
 				int _seperator_pos = alib_getchrpos(_pos, ' ', alib_fnull(_pos));
 				std::vector<std::string> _posv;
 				alib_split_quoted(_pos, &_posv);
 				if (_posv.size() < 2) {
-					Win->cons.pushuf("This command requires 2 arguments");
 					return;
 				}
 				std::string _pos1 = _posv.at(0);
@@ -121,7 +141,6 @@ Window::Initializer $un{
 				int x,y;
 				x = atoi(_pos1.c_str());
 				y = atoi(_pos2.c_str());
-				Win->cons.pushf("<%i> <%i>", x, y);
 				playerimg.transform.position = { x,y };
 				}
 			});
@@ -138,29 +157,32 @@ Window::Initializer $un{
 					Win->scene->Discard();
 				}
 				if (argv.at(0) == "load") {
-					if (argc == 1) {
+					playerdata.compile("data/pdata.cwl");
+					if (argc < 1) {
 						Win->cons.pushuf("cw load requires a scene name!");
+						return;
 					}
 					if (!alib_endswith(argv.at(1).c_str(), ".cwl")) {
 						argv.at(1).append(".cwl");
 					}
 					if (alib_file_exists(argv.at(1).c_str())) {
-						if (Win->scene != nullptr) {
+						if (SUCCEEDED(Win->scene)) {
 							Win->scene->Discard();
 						}
-						Win->scene = new cwLayout(argv.at(1).c_str());
+						Window::WindowInstance->scene = new cwLayout(argv.at(1).c_str());
 					}
 					else {
 						Win->cons.pushuf("cw load requires a existing file!");
 					}
 				}
 				if (argv.at(0) == "reload") {
-					std::string cwlSceneName = Win->scene->name;
-					if (Win->scene != nullptr) {
-						Win->scene->Discard();
+					if (Win->scene == nullptr || !SUCCEEDED(Win->scene)) {
+						return;
 					}
+					Win->cons.pushf("Reloading scene %s", Win->scene->name.c_str());
+					std::string cwlSceneName = Win->scene->name;
+					Win->scene->Discard();
 					Win->scene = new cwLayout(cwlSceneName.c_str());
-					
 				}
 			  }
 			});
@@ -180,12 +202,15 @@ Window::Initializer $un{
 				}
 			} });
 		};
-
-
-		player.Update = [](){
+		player.Update = [&](){
 			Keyboard.GetKey(Input::K_LSHIFT) ? setbitv(player.data, 6, 1) : setbitv(player.data, 6, 0);
 			double speed = (getbitv(player.data, 6)) ? 0.3 : 0.2;
 			Raycast2D Raycast = Raycast2D();
+
+
+
+			playerCollider.rect = playerimg.rect;
+			playerCollider.rect_cs = playerimg.rect;
 			if (getbitv(player.data, 0)) {
 
 				if (!(
@@ -201,7 +226,7 @@ Window::Initializer $un{
 							playerimg.uv = playerAnimFrames[2 * 4 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 180, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[2 * 4 + (int)char_anim_offset];
-								playerimg.transform.position.x -= (speed * Time.DeltaTime);
+								playerimg.transform.position.x -= static_cast<int>(speed * Time.DeltaTime);
 							}
 						}
 						if (window->keyboard.GetKey(Input::K_d)) {
@@ -210,7 +235,7 @@ Window::Initializer $un{
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 0, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[3 * 4 + (int)char_anim_offset];
 								// We add 2 for... well a reason I have no idea about.
-								playerimg.transform.position.x += (speed * Time.DeltaTime);
+								playerimg.transform.position.x += static_cast<int>(speed * Time.DeltaTime);
 							}
 						}
 					}
@@ -220,7 +245,7 @@ Window::Initializer $un{
 							playerimg.uv = playerAnimFrames[1 * 4 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 270, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[1 * 4 + (int)char_anim_offset];
-								playerimg.transform.position.y -= (speed * Time.DeltaTime);
+								playerimg.transform.position.y -= static_cast<int>(speed * Time.DeltaTime);
 							}
 						}
 						if (window->keyboard.GetKey(Input::K_s)) {
@@ -228,23 +253,31 @@ Window::Initializer $un{
 							playerimg.uv = playerAnimFrames[0 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 45, 90, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[0 + (int)char_anim_offset];
-								playerimg.transform.position.y += (speed * Time.DeltaTime);
+								playerimg.transform.position.y += static_cast<int>(speed * Time.DeltaTime);
 							}
 						}
 					}
 
+					
+					
+
+
+
 
 					if (window->keyboard.GetKeyDown(Input::K_q)) {
-						Win->cons.pushf("Camera: (%i, %i), Player Pos: (%i, %i)",
+						Win->cons.pushf("Camera: (%d, %d), Player Pos: (%d, %d)",
 							Camera::GetInstance()->m_target->x,
 							Camera::GetInstance()->m_target->y,
-							playerimg.transform.position.x,
-							playerimg.transform.position.y
+							playerdata["position"]["x"].get<int>(),
+							playerdata["position"]["y"].get<int>()
 						);
 					}
 					if (window->keyboard.GetKeyDown(Input::K_e)) {
 						setbitv(player.data, 5, 1);
 					}
+					playerdata["position"]["x"] = playerimg.transform.position.x;
+					playerdata["position"]["y"] = playerimg.transform.position.y;
+
 				}
 			}
 			playerimg.enabled = getbitv(player.data, 1);
@@ -265,11 +298,11 @@ Window::Initializer $un{
 			}
 
 
-
 			// end of player update script
 		};
 		playerCollider.OnColliderHit = [&](RectCollider2d* col) {
-			std::cout << "aaaaa";
+			if (col->layer == COL_TRG) {
+			}
 		};
 		window->AddComponent(&player);
 	}
@@ -308,12 +341,6 @@ Window::Initializer _nn{
 		*/
 		Win->Start = []() {
 			Camera::GetInstance()->SetTarget(&playerimg.transform.position); 
-			OVERLAY_IMG.transform.scale = { Win_width, Win_height };
-			OVERLAY_IMG.enabled = false;
-			OVERLAY_IMG.manualDraw = true;
-			OVERLAY_IMG.center = true;
-			OVERLAY_IMG.transform.position = Vector2(-720, -720);
-			OVERLAY_IMG.lockCamera();
 
 		};
 		Win->OnFocus = []() {};
@@ -354,7 +381,6 @@ Window::Initializer _nn{
 		};
 		Win->PostPreRender = [](){
 			if (!getbitv(Win->data, 0)) {
-				OVERLAY_IMG.Draw();
 				ImGui::SetWindowFocus(NULL);
 				Win->debug_window_open = false;
 			}
@@ -365,8 +391,8 @@ Window::Initializer _nn{
 
 					for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
 						RectCollider2d* c = RectCollider2d::_mGlobalColArr[o];
-						SDL_SetRenderDrawColor(Win->SDL_REND, 128, 35, 128, 32);
-						SDL_RenderFillRect(Win->SDL_REND, c->rect);
+						SDL_SetRenderDrawColor(Win->SDL_REND, 128, 128, 128, 128);
+						SDL_RenderFillRect(Win->SDL_REND, c->rect_cs);
 					}
 					for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
 						for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {

@@ -1,6 +1,7 @@
 #pragma once
+#ifndef cwlib_cwa_interpreter_hpp
+#define cwlib_cwa_interpreter_hpp
 
-#include "_cwincludes.h"
 /*
 Asset file structure
 *.cwa : {
@@ -13,17 +14,35 @@ Asset file structure
 	}
 	// long with ID of asset
 	assetID : 4
-	// ID of the main functions declared either in-code or via cws script.
-	// If declared via cws script, first 8 chars of function name are what this should be.
-	assetUpdateF : 8
-	assetStartF : 8
 	// Bitmask used as flags via the cws script or in-code
 	assetFlags : 4
 	{
 	  0: enabled/disabled
 	}
+	// Length of ABT data
+	assetABTLen : 4
+	assetABT : N
+
+
 }
-
-
 */
+#include "../utils.hpp"
+#include <functional>
+#include "_cwincludes.h"
 
+struct cwAsset {
+	struct cwAssetVersion {
+		uint16_t min;
+		uint16_t max;
+	};
+	cwAssetVersion version;
+	uint32_t assetID;
+	uint64_t updateFID;
+	uint64_t startFID;
+	uint32_t flags;
+};
+
+
+
+
+#endif

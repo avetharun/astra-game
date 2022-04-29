@@ -18,6 +18,7 @@
 
 #include <luaaa.hpp>
 #include "lua.hpp"
+#include "cwlib/cwerror.h"
 
 
 SDL_Renderer* SDL_REND_RHPP;
@@ -88,6 +89,7 @@ struct Sprite{
 	 */
 	char params;
 	const char* name = nullptr;
+	const char* identifier = nullptr;
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
@@ -114,7 +116,6 @@ struct Sprite{
 	Vector2 center_position{};
 	Vector2 _offset{};
 	Vector2 _cameraViewOffset{};
-	Vector2 origin{};
 	SDL_Rect* rect {nullptr};
 	Transform transform{};
 
@@ -140,8 +141,8 @@ struct Sprite{
 		}
 		rect->x =(int)_offset.x;
 		rect->y =(int)_offset.y;
-		rect->w = (int)transform.scale.x;
-		rect->h = (int)transform.scale.y;
+		rect->w = abs(transform.scale.x);
+		rect->h = abs(transform.scale.y);
 		if (center) {
 			rect->x = (int)_offset.x - (transform.scale.x / 2);
 			rect->y = (int)_offset.y - (transform.scale.y / 2);
@@ -153,7 +154,8 @@ struct Sprite{
 		);
 	};
 	bool manualDraw = false;
-
+	bool isRendering;
+	SDL_Texture* Texture;
 	/*
 	* \brief Draws to screen immediately. You can run this, or let the batch renderer do its thing. Either works.
 	* 
@@ -161,51 +163,38 @@ struct Sprite{
 	void Draw() {
 		if (!enabled && !manualDraw) { return; }
 		Update();
-		/* Not working, don't use commented out below. */
-		/*
-		SDL_Rect bounds =
-			SDL_Rect{
-				(int)Camera::GetInstance()->m_Position.x,
-				(int)Camera::GetInstance()->m_Position.y,
+		// If sprite is centered, this method will never render it!
+		if (!center) {
+			SDL_Rect bounds = {
+				(int)Camera::GetInstance()->m_Offset.x,
+				(int)Camera::GetInstance()->m_Offset.y,
 				(int)Camera::GetInstance()->m_Viewport.x,
 				(int)Camera::GetInstance()->m_Viewport.y
-		};
-		if (!VectorRect::checkCollision(&bounds, &rect) && getbitv(params,0)) {
-#ifdef COUT_DEBUG
-			std::cout << "Not rendering sprite at position: " << transform.position << " because it's off screen of camera at " <<
-				Camera::GetInstance()->m_Position << " with viewport " << Camera::GetInstance()->m_Viewport << '\n';
+			};
+			SDL_SetRenderDrawColor(SDL_REND_RHPP, 128, 255, 255, 255);
+			SDL_RenderDrawRect(SDL_REND_RHPP, &bounds);
+			if (!Raycast2D::RectIntersects(rect, &bounds)) {
+				isRendering = false;
+#ifdef CW_EXTRA_DEBUG_INFO
+				cwError::sstate(cwError::CW_DEBUG);
+				cwError::serrof("Not rendering sprite at %d, %d wh(%d, %d) because it doesn't intersect camera at %d, %d wh(%d, %d)", rect->x, rect->y, rect->w, rect->h, bounds.x, bounds.y, bounds.w, bounds.h);
 #endif
-			return;
+				return;
+			}
+		}
 
-		}*/
+		isRendering = true;
 		int SDL_FLIP_V = SDL_FLIP_NONE;
-		SDL_Rect r = SDL_Rect{
-			rect->x,
-			rect->y,
-			abs(transform.scale.x) == 0? surf->w*3:abs(transform.scale.x) ,
-			abs(transform.scale.y) == 0? surf->h*3:abs(transform.scale.y) ,
-		};
-		SDL_Point _origin = SDL_Point{ origin.x, origin.y };
-		if (transform.scale.x < 0) {
-			SDL_FLIP_V |= SDL_FLIP_VERTICAL;
-			transform.scale.x *= -1;
-		}
-		if (transform.scale.y < 0) {
-			SDL_FLIP_V |= SDL_FLIP_HORIZONTAL;
-			transform.scale.y *= -1;
-		}
-		SDL_Texture* Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);
-		if (&uv == nullptr || VectorRect::checkCollision(&uv, &VectorRect::_emptyRect))
+		SDL_Point _origin = SDL_Point{ transform.origin.x, transform.origin.y };
+		if (&uv == nullptr || SDL_RectEmpty(&uv))
 		{
-			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, &r, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
+			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
 				? []() {std::cout << SDL_GetError() << '\n'; }() : noop;
 		}
 		else {
-			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, &uv, &r, transform.angle, NULL, (SDL_RendererFlip)SDL_FLIP_V) < 0)
+			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, &uv, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
 				? []() {std::cout << SDL_GetError() << '\n'; }() : noop;
 		}
-		SDL_DestroyTexture(Texture);
-		Update();
 	}
 
 	
@@ -215,8 +204,8 @@ struct Sprite{
 		s_sf.erase(name);
 		auto sv = Sprite::_mglobalspritearr;
 		sv.erase(std::remove(sv.begin(), sv.end(), this), sv.end());
-		
 		SDL_FreeSurface(surf);
+		SDL_DestroyTexture(Texture);
 		RtlZeroMemory(this, sizeof(struct Sprite));
 		
 	}
@@ -234,10 +223,10 @@ struct Sprite{
 			surf = loadImage(filename);
 			if (surf == nullptr) {
 				std::cout << "Surface null in build source " << __FILE__ << " with surface file: " << filename << std::endl;
-				exit(-100);
 				return;
 			}
 			std::cout << "Created surface from " << filename << " with " << (int)surf->format->BytesPerPixel << " channels with report of " << IMG_GetError() << '\n';
+			surf->flags |= SDL_TEXTUREACCESS_STREAMING | SDL_TEXTUREACCESS_TARGET;
 			surfFilemaps.emplace(filename, surf);
 		}
 		else {
@@ -249,11 +238,26 @@ struct Sprite{
 		}
 		transform.scale = Vector2(uv.w, uv.h);
 		rect = (SDL_Rect*)malloc(sizeof(struct SDL_Rect));
+		Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);
 		return;
 	}
-	static Sprite * newInstance(const char* f) {
-		return new Sprite(f);
+	void setID(const char* i) {
+		this->identifier = i;
 	}
+	static Sprite* getElementByID(std::string id) {
+		for (int i = 0; i < _mglobalspritearr.size(); i++) {
+			Sprite* _s = _mglobalspritearr[i];
+			if (_s->identifier == nullptr) { continue; }
+			std::cout << "Testing ID '" << id.c_str() << "' with id '" << _s->identifier << '\'' << '\n';
+			if (strcmp(id.c_str(), _s->identifier)) {
+				std::cout << "ID matches!";
+				return _s;
+			}
+		}
+		return nullptr;
+	}
+
+
 	Vector2 getPosition() {
 		return transform.position;
 	}
@@ -302,6 +306,7 @@ struct Sprite{
 };
 std::vector<Sprite*> Sprite::_mglobalspritearr = std::vector<Sprite*>();
 
+
 struct Object : private Sprite {
 	Sprite* sprite = nullptr;
 	SDL_Rect* collider;
@@ -310,8 +315,6 @@ private:
 	bool enabled = false;
 public:
 	Transform transform;
-
-
 
 	void UpdateInternal() {
 		rect.x = transform.position.x;

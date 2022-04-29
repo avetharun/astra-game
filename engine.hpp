@@ -17,7 +17,6 @@
 #include <vector>
 #include <thread>
 #include <functional>
-#include <chrono>
 #include "renderer.hpp"
 #include "Audio.hpp"
 #undef main
@@ -34,6 +33,12 @@ typedef __int64 int64;
 
 #include "cwlib/cwlib.hpp"
 #include "e_keybindings.h"
+
+
+#include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL_opengl_glext.h>
+
+
 
 struct Window {
 private:
@@ -55,6 +60,7 @@ public:
 	std::function< void() > OnFocus = [] {noop; };			// 
 	std::function< void() > OnFocusLost = [] {noop; };		// 
 	struct Component {
+		std::map<std::string, int> conds;
 		int64_t data = B64(00000000,00000000,00000000,00000000, 00000000, 00000000, 00000000, 00000000);
 		std::function< void() > Start = [] {noop;};			// Code to run before first frame
 		std::function< void() > PreUpdate = [] {noop; };		// Code to run before every frame
@@ -118,6 +124,9 @@ public:
 		}
 		bool GetKeyDown(int k) { // Key pressed this frame?
 			return (keys[k] == true + true) ? true : false;
+		}
+		void flush() {
+			memset(keys, 0, 1024);
 		}
 	};
 	struct Mouse {
@@ -289,9 +298,7 @@ public:
 		if (ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemActive() && !ImGui::IsMouseClicked(0))
 			ImGui::SetKeyboardFocusHere(0);
 		bool _isEnterPressed = ImGui::InputText("##consInput", cons.debugWindowInput, 512, ImGuiInputTextFlags_EnterReturnsTrue);
-		ImGui::SameLine();
-		bool _isSendPressed = ImGui::Button("Send");
-		if (_isEnterPressed || _isSendPressed) {
+		if (_isEnterPressed) {
 			std::string inputCommand(cons.debugWindowInput);
 			std::string::size_type cmdend = inputCommand.find(' ');
 			if (cmdend != std::string::npos) {
@@ -299,15 +306,19 @@ public:
 				cons.handlecmdf(inputCommand, cons.debugWindowInput + cmdend + 1);
 			}
 			cons.handlecmdf(inputCommand, (char*)"\0");
-
 			// resets input text
-			memset(cons.debugWindowInput, 0, 512);
+			cons.debugWindowInput[0] = {0}; // generates a call to memset(debugWindowInput[0], '\0', 8)
 		}
 		debug_window_open = ImGui::IsWindowFocused();
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::Text("Application average %.2f ms/frame (%.1f FPS)", Time::DeltaTime, ImGui::GetIO().Framerate);
 		ImGui::End();
 		
 	}
+
+	struct Postprocessing {
+			
+
+	};
 
 	void RenderInternal() {
 		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
@@ -320,7 +331,7 @@ public:
 		PostPreRender();
 		ImGui::Render();
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
-		SDL_RenderPresent(SDL_REND);		
+		SDL_RenderPresent(SDL_REND);
 	}
 	void procEvent() {
 		while (SDL_PollEvent(&sdlevent))
@@ -333,7 +344,7 @@ public:
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEMOTION:
 				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_MOUSE_FOCUS) {
-					mouse.m1d = false; mouse.m2d = false;
+					mouse.m1d = false; mouse.m2d = false;    
 					if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 						mouse.m1d = true;
 					}
@@ -345,12 +356,19 @@ public:
 			case SDL_WINDOWEVENT_FOCUS_LOST:
 				this->OnFocusLost();
 				this->hasFocus = false;
+				this->keyboard.flush();
+				std::cout << "window focus lost \n";
 				break;
 			case SDL_WINDOWEVENT_MAXIMIZED:
 				this->OnMaximize();
 				break;
 			case SDL_WINDOWEVENT_MINIMIZED:
 				this->OnMinimize();
+				break;
+			case SDL_WINDOWEVENT_MOVED: 
+				// Flush keyboard. This is so when moving, if a key is held, it won't teleport!
+				this->keyboard.flush();
+				std::cout << "Moved window\n";
 				break;
 			case SDL_WINDOWEVENT_FOCUS_GAINED:
 				this->OnFocus();
@@ -378,7 +396,6 @@ public:
 
 
 	void IdleFuncInternal() {
-		auto start = std::chrono::high_resolution_clock::now();
 		if (!started) {
 			started = true;
 			Start();
@@ -433,8 +450,7 @@ public:
 				break;
 			}
 		}
-		auto end = std::chrono::high_resolution_clock::now();
-		time.DeltaTime = std::chrono::duration<long double, std::milli>(end - start).count();
+		time.DeltaTime = (double)ImGui::GetIO().DeltaTime * 1000;
 	}
 	void AddComponent(Component* c) {
 		*this << c;
@@ -444,36 +460,51 @@ public:
 	};
 };
 
+void recalc_rect_positions() {
+	for (int i = 0; i < RectCollider2d::_mGlobalColArr.size(); i++) {
+		auto m = RectCollider2d::_mGlobalColArr[i];
+		if (m->layer == COL_PLAYER) {
+			continue;
+		}
 
+		m->rect_cs->x = m->rect->x + -Camera::GetInstance()->m_target->x;
+		m->rect_cs->y = m->rect->y + -Camera::GetInstance()->m_target->y;
+	}
+}
 #pragma region WindowDefs
 void Window::PreUpdateInternal() {
+
 	PreUpdate();
 	for (unsigned int i = 0; i < components.size(); i++) {
+		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PreUpdate();
 	}
-
 }
 void Window::UpdateInternal() {
 	Update();
 	for (unsigned int i = 0; i < components.size(); i++) {
+		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->Update();
 	}
 }
 void Window::PostUpdateInternal() {
 	PostUpdate();
 	for (unsigned int i = 0; i < components.size(); i++) {
+		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PostUpdate();
 	}
 }
 void Window::PreRenderInternal() {
 	PreRender();
 	for (unsigned int i = 0; i < components.size(); i++) {
+		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PreRender();
 	}
 }
 void Window::PostRenderInternal() {
 	PostRender();
 	for (unsigned int i = 0; i < components.size(); i++) {
+		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PostRender();
 	}
 }

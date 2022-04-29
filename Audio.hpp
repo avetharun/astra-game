@@ -4,6 +4,9 @@
 #include <iosfwd>
 #include <SDL2/SDL_mixer.h>
 #include <iostream>
+
+#include <map>
+
 class AudioWAV {
 private:
 	int selectedChannel = -1;
@@ -12,7 +15,9 @@ private:
 	Mix_Chunk* chunkw = nullptr;
 	bool music = false;
 	bool loop = false;
+	std::string fname;
 public:
+	static std::map<std::string, AudioWAV*> audiofiles;
 	const char
 		*SDL_UNABLE_TO_INIT = "sdl_unable_to_init",
 		*WAV_FILE_MISSING = "wav_file_missing",
@@ -21,16 +26,24 @@ public:
 		*WAV_UNINIT = "wav_uninitialized",
 		*WAV_UNABLE_TO_PLAY = "wav_unable_to_play"
 		;
-	AudioWAV(const char* filename, bool _music = false) {
+	AudioWAV(std::string filename, std::string audioName = "\0", bool _music = false) {
+		if (audioName == "\0") {
+			audioName = filename;
+		}
+		if (audiofiles.contains(audioName)) {
+			AudioWAV * w = audiofiles.at(audioName);
+			audiofiles.erase(audioName);
+			w->operator~();
+		}
+		fname = filename;
+		audiofiles.insert({audioName, this});
 		music = _music;
 		if (music) {
-			chunk = Mix_LoadMUS(filename);
-
+			chunk = Mix_LoadMUS(filename.c_str());
 			status = (chunk == nullptr) ? Mix_GetError() : WAV_SUCCESS;
-
 		}
 		else {
-			chunkw = Mix_LoadWAV(filename);
+			chunkw = Mix_LoadWAV(filename.c_str());
 			status = (chunkw == nullptr) ? Mix_GetError() : WAV_SUCCESS;
 		}
 	}
@@ -45,6 +58,9 @@ public:
 	}
 	void unLoop () {
 		loop = false;
+	}
+	void Stop() {
+		(music) ? Mix_HaltMusic() : Mix_HaltChannel(selectedChannel);
 	}
 	void Play() {
 		int channel = selectedChannel;
@@ -79,6 +95,12 @@ public:
 	int GetVolume() {
 		return Mix_Volume(selectedChannel, -1);
 	}
+	std::string name() {
+		return this->fname;
+	}
+	bool operator ==(std::string o) {
+		return (this->fname == o);
+	}
 	bool operator ==(AudioWAV o) {
 	}
 	bool operator == (nullptr_t) {
@@ -94,5 +116,7 @@ public:
 		// Toggle loop
 		loop = !loop;
 	}
+
 };
+std::map<std::string, AudioWAV*> AudioWAV::audiofiles = std::map<std::string, AudioWAV*>();
 #endif

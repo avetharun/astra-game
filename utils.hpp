@@ -29,9 +29,14 @@
  */
 
 
-// Avetharun : 18-4-22 : added byte modification utilities
-// Avetharun : 19-4-22 : added beginswith function, and renamed readFileBytes to alib_file_read
-
+ // Avetharun : 4-14-22 : added byte modification utilities
+ // Avetharun : 4-15-22 : added beginswith function, and renamed readFileBytes to alib_file_read
+ // Avetharun : 4-17-22 : added "copy sign" function
+ // Avetharun : 4-27-22 : added json utilities & fixed #pragma once issue, causing things that must be declared seperately to not work.
+ // Avetharun : 4-29-22 : modify the way function pointer types are created, now uses a macro. Formatted as follows:
+      // d_typedef_func_ty(ret_val, ty_name, ty_arg_types_variadic)
+      // Note: semicolon is NOT needed, as if it's put at the end, it will produce an intellisense warning. Apparently it's by design. Ignore it if it happens.
+      // Original impl: https://github.com/avetharun/avetharun/blob/bf49a022c7021fb3200231722f7975f167e1cf9f/ave_libs.hpp#L308
 
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -140,22 +145,30 @@
 #include <iosfwd>
 #include <fstream>
 #include <sstream>
-
-void alib_read_file(const char* fname, char** out_, unsigned long long* size_) {
-    // TODO: do this more elegantly.. But that's hard! So I won't do it. (:
+#include <string>
+inline std::string alib_file_read(std::ifstream& file) {
+    std::ostringstream buf;
+    buf << file.rdbuf();
+    return buf.str();
+}
+inline std::string alib_file_read(const char* fname) {
+    std::ostringstream buf;
     std::ifstream file(fname, std::ios::binary);
-    std::streampos fsize = 0;
-    fsize = file.tellg();
-    file.seekg(0, std::ios::end);
-    fsize = file.tellg() - fsize;
-    file.seekg(0, std::ios::beg); // Go back to the beginning
-    size_t _sz = fsize;
-    char* out_dir = (char*)malloc(_sz);
-    file.read(out_dir, _sz);
-    file.close();
-    *out_ = out_dir;
-    *size_ = _sz;
-    // yay memory allocation magic!   
+    buf << file.rdbuf();
+    return buf.str();
+}
+
+
+void alib_file_read(const char* fname, const char** out_, unsigned long long* size_) {
+    std::string _fr = alib_file_read(fname);
+    *out_ = _fr.c_str();
+    *size_ = _fr.size();
+}
+
+void alib_file_read(std::ifstream file, const char** out_, unsigned long long* size_) {
+    std::string _fr = alib_file_read(file);
+    *out_ = _fr.c_str();
+    *size_ = _fr.size();
 }
 
 inline bool alib_file_exists(const char* name) {
@@ -166,6 +179,34 @@ inline bool alib_file_exists(const char* name) {
     else {
         return false;
     }
+}
+
+void alib_file_write(const char* filen, const char* d) {
+    std::ofstream file(filen, std::ios::out | std::ios::binary);
+    size_t l = strlen(d);
+    file.write(d, l);
+    file.close();
+}
+void alib_file_write(std::ostream& file, const char* d) {
+    size_t l = strlen(d);
+    file.write(d, l);
+}
+
+#ifdef _WIN32
+#include "direct.h"
+#define PATH_SEP '\\'
+#define GETCWD _getcwd
+#define CHDIR _chdir
+#else
+#include "unistd.h"
+#define PATH_SEP '/'
+#define GETCWD getcwd
+#define CHDIR chdir
+#endif
+bool alib_scwd(const char* dir) { return CHDIR(dir) == 0; }
+
+char* alib_gcwd() {
+    return GETCWD(0, 0);
 }
 
 #endif // ALIB_NO_FILE_UTILS
@@ -246,32 +287,36 @@ struct alib_inline_run {
 
 #if (defined(ALIB_FORCE_WIN_UTILS) && defined(_WIN32 )) || (!defined(ALIB_NO_WIN_UTILS)) 
 #include <Windows.h>
-void HideConsole()
+void alib_hide_console()
 {
     ::ShowWindow(::GetConsoleWindow(), SW_HIDE);
 }
 
-void ShowConsole()
+void alib_show_console()
 {
     ::ShowWindow(::GetConsoleWindow(), SW_SHOW);
 }
 
-bool IsConsoleVisible()
+bool alib_console_visible()
 {
     return ::IsWindowVisible(::GetConsoleWindow()) != FALSE;
 }
+
+
 #endif
 
 #if defined(ALIB_FORCE_FUNCPTR) || (!defined(ALIB_NO_FUNCPTR))
+// Note: ignore any "function definition for typedef_func_ty" or "Y is not defined" errors. They're temporary.
+#define d_typedef_func_ty(return_z, name, ...) typedef return_z (*name)(##__VA_ARGS__);
 #define noop (void)0
-typedef int  (*int_2i_f)(int, int);
-typedef int  (*int_1i_f)(int);
-typedef int  (*int_0a_f)();
-typedef int  (*int_1i_1p_f)(int, void*);
-typedef void (*void_0a_f)();
-typedef void (*void_1i_f)(int);
-typedef void (*void_2i_f)(int, int);
-typedef void (*void_1pc_1i_f)(const char*, uint32_t);
+d_typedef_func_ty(int, int_2i_f, int, int)
+d_typedef_func_ty(int, int_1i_f, int)
+d_typedef_func_ty(int, int_0a_f)
+d_typedef_func_ty(void, int_1i_1p_f, int, void*)
+d_typedef_func_ty(void, void_0a_f)
+d_typedef_func_ty(void, void_1i_f, int)
+d_typedef_func_ty(void, void_2i_f, int, int)
+d_typedef_func_ty(void, void_1pc_1i32_f, const char*, uint32_t)
 #endif // ALIB_NO_FUNCPTR
 
 
@@ -290,7 +335,13 @@ unsigned long alib_n_fnull(const char* arr, int limit) {
     }
     return 0;
 }
-
+size_t alib_nulpos(const char* arr) {
+    return alib_fnull(arr);
+}
+size_t alib_nulposn(const char* arr, int limit) {
+    return alib_n_fnull(arr, limit);
+}
+#define __alib_haslogm__
 int alib_log(int base, int n) {
 #ifndef _CMATH_
     // 75% as fast as cmath, if using recursion. If we have cmath avalible, use that instead.
@@ -301,6 +352,19 @@ int alib_log(int base, int n) {
     return (int)(log(n) / log(base));
 #endif
 }
+#define __alib_haswrange__
+bool alib_wrange(int min, int max, int val) {
+    return ((val - max) * (val - min) <= 0);
+}
+// Taken from python's usage of math.isclose()
+bool alib_fclose(float first, float second, float rel_tol = 1e-09, float abs_tol = 0.0) {
+    return abs(first - second) <= max(rel_tol * max(abs(first), abs(second)), abs_tol);
+}
+bool alib_dclose(double first, double second, double rel_tol = 1e-09, double abs_tol = 0.0) {
+    return abs(first - second) <= max(rel_tol * max(abs(first), abs(second)), abs_tol);
+}
+
+
 int alib_digitsInNum(long n, int base = 10)
 {
     if (n == 0) { return 1; }
@@ -340,6 +404,13 @@ const char* alib_bit_rep[16] = {
     "1100","1101","1110","1111",
 };
 
+// If size != 0, leave size as is
+void alib_internal_reqlen(size_t* sz, const char* arr) {
+    if ((*sz) == 0) {
+        (*sz) = strlen(arr);
+    }
+}
+
 void alib_print_byte(uint8_t byte)
 {
     printf("%s%s", alib_bit_rep[byte >> 4], alib_bit_rep[byte & 0x0F]);
@@ -366,55 +437,72 @@ int alib_beginswith(const char* str, const char* prefix)
         return 0;
     return strncmp(str, prefix, lenprefix) == 0;
 }
-int alib_getchrpos(const char* array, char c, size_t len)
+// get position of char 
+int alib_getchrpos(const char* src, char c, size_t len = 0)
 {
+    alib_internal_reqlen(&len, src);
     for (size_t i = 0; i < len; i++)
     {
-        if (array[i] == c)
+        if (src[i] == c)
             return (int)i;
     }
     return -1;
 }
-
-#include <regex>		// regex, sregex_token_iterator
-#include <algorithm>    // copy
-#include <iterator>     // back_inserter
-#include <iomanip>
-
-void alib_split(std::string arr, std::string del, std::vector<std::string>* out)
-{
-    size_t start = 0;
-    size_t end = arr.find(del);
-    while (end != -1) {
-        out->push_back(arr.substr(start, end - start));
-        start = end + del.size();
-        end = arr.find(del, start);
+// char array contains
+bool alib_chrcont(const char* src, const char* prefix) {
+    size_t src_len = strlen(src);
+    for (int i = 0; i < src_len; i++) {
+        if (strcmp(src + i, prefix)) {
+            return true;
+        }
     }
-    out->push_back(arr.substr(start, end - start));
+    return false;
+}
+int alib_chreq(const char* src, const char* match) {
+    size_t sl = strlen(src);
+    size_t ml = strlen(match);
+    if (ml > sl) { return false; }
+    return strncmp(src, match, ml);
+}
+int alib_streq(std::string src, const char* match) {
+    size_t sl = src.size();
+    size_t ml = strlen(match);
+    if (ml > sl) { return false; }
+    return (src.compare(match) == 0);
+}
+// Occurances of char `c` in `src`
+size_t alib_chrocc(const char* src, char c, size_t len = 0) {
+    alib_internal_reqlen(&len, src);
+    size_t occ = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (src[i] == c) { occ++; }
+    }
+    return occ;
+}
+const char* alib_rmocc(const char* src, char c, size_t len = 0) {
+    alib_internal_reqlen(&len, src);
+    std::vector<char> src_copy;
+    for (int i = 0; i < len; i++) {
+        if (src[i] == c) { continue; }
+        src_copy.push_back(src[i]);
+    }
+    src_copy.push_back('\0');
+    return src_copy.data();
 }
 
-// Note: ONLY supports ' ' as a delimeter!
-void alib_split_quoted(std::string arr, std::vector<std::string>* out) {
-
-    std::istringstream iss{ arr };
-    std::string tmp;
-
-    while (iss >> std::quoted(tmp)) {
-        out->push_back(tmp);
-    }
-
-}
-
+// Set byte at offset of array 
 char alib_get_byte(void* data, int offset) {
-    return ( (char*)data ) [offset];
+    return ((char*)data)[offset];
 }
+// Set byte at array[0]
 char alib_get_byte(void* data) {
     return ((char*)data)[0];
 }
-
+// Set byte at offset of array 
 void alib_set_byte(void* data, char byte, int offset) {
     reinterpret_cast<char*>(data)[offset] = byte;
 }
+// Set byte at array[0]
 void alib_set_byte(void* data, char byte) {
     reinterpret_cast<char*>(data)[0] = byte;
 }
@@ -465,22 +553,120 @@ const char* alib_va_arg_parse(const char* fmt, va_list args) {
     vsprintf((char*)_buf, fmt, args);
     return _buf;
 }
+const char* alib_strfmt(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    size_t bufsz = snprintf(NULL, 0, fmt, args);
+    const char* _buf = (const char*)malloc(bufsz);
+    vsprintf((char*)_buf, fmt, args);
+    va_end(args);
+    return _buf;
+}
 
 
-va_list alib_va_list_parse(char padding = 0,  ...) {
+va_list alib_va_list_parse(char padding = 0, ...) {
     va_list args;
     va_start(args, padding);
     va_end(args);
     return args;
 }
+
+// Copies the sign-ed ness of A into B
+void alib_copy_signed(signed int a, signed int* b) {
+    *b = (a < 0) ? -*b : (*b < 0) ? -*b : *b;
+}
+
+
+// Begin std::string specific utilities
+
+#include <string>
+#include <regex>		// regex, sregex_token_iterator
+#include <algorithm>    // copy
+#include <iterator>     // back_inserter
+#include <iomanip>
+
+void alib_split(std::string arr, std::string del, std::vector<std::string>* out)
+{
+    size_t start = 0;
+    size_t end = arr.find(del);
+    while (end != -1) {
+        out->push_back(arr.substr(start, end - start));
+        start = end + del.size();
+        end = arr.find(del, start);
+    }
+    out->push_back(arr.substr(start, end - start));
+}
+
+std::vector<std::string> alib_split(const std::string& s, char delim) {
+    std::stringstream ss(s);
+    std::string item;
+    std::vector<std::string> elems;
+    while (std::getline(ss, item, delim)) {
+        //elems.push_back(item);
+        elems.push_back(std::move(item)); // if C++11 (based on comment from @mchiasson)
+    }
+    return elems;
+}
+void alib_strsplit(std::string& str, char delim, std::vector<std::string>& out)
+{
+    size_t start;
+    size_t end = 0;
+
+    while ((start = str.find_first_not_of(delim, end)) != std::string::npos)
+    {
+        end = str.find(delim, start);
+        out.push_back(str.substr(start, end - start));
+    }
+}
+// Note: ONLY supports ' ' as a delimeter!
+void alib_split_quoted(std::string arr, std::vector<std::string>* out) {
+
+    std::istringstream iss{ arr };
+    std::string tmp;
+
+    while (iss >> std::quoted(tmp)) {
+        out->push_back(tmp);
+    }
+
+}
+
+const char* alib_str_hex(std::string s) {
+
+    std::stringstream s1;
+    for (int i = 0; i < s.length(); i++) {
+        s1 << std::hex << (int)s.at(i);
+    }
+
+    return s1.str().c_str();
+}
+
+
+#include <string>
+#include <algorithm>
+
+//  Lowercases string
+std::string alib_lower(const char* s)
+{
+    std::string s2 = s;
+    std::transform(s2.begin(), s2.end(), s2.begin(), tolower);
+    return s2;
+}
+
+// Uppercases string
+std::string alib_upper(const char* s)
+{
+    std::string s2 = s;
+    std::transform(s2.begin(), s2.end(), s2.begin(), toupper);
+    return s2;
+}
+
+
 #endif // ALIB_NO_BYTE_UTILS
 
 #endif // __lib_aveth_utils_hpp
 
 
 // begin preprocessor defs that need to be explicitly defined
-
-
 #if defined(ALIB_ANDROID_LOGGING) && !defined(alib_android_logging_helper__)
 #define alib_android_logging_helper__
 #ifndef PROJECT_NAME
@@ -495,11 +681,11 @@ va_list alib_va_list_parse(char padding = 0,  ...) {
 
 // Create macros to emulate "public T N = V" used in other languages
 #if defined(ALIB_VARIABLE_MANAGER) && !defined(alib_visibility_helper__)
-#define alib_pubpriv_helper__
+#define alib_visibility_helper__
+
 // These macros assume that it's to invert a variable's visibility, so don't use them if you don't want that!
 
 #define public(var) public: var; private:
-`
 #define private(var) private: var; public:
 
 #endif
@@ -510,12 +696,74 @@ va_list alib_va_list_parse(char padding = 0,  ...) {
 
 #define __private_internal_(var) private: var; public:
 // Creates a private(static TYPE* instance)
-#define genInstan                  NNNNNNNNNNNNNNNNNNNNNNNNNNVB        
+#define genInstance(TYPE) \
     __private_internal_(static TYPE* instance); \
     static TYPE* GetInstance() { return (instance == nullptr) ? new TYPE() : instance; }
 #define genInstanceDef(TYPE) \
     TYPE* TYPE::instance = nullptr;
 
+#endif
+
+
+//
+// nlohmann/json utilities
+//
+#if defined(ALIB_JSON_NLOHHMAN) && (!defined(alib_json_utilities__included_))
+#define alib_json_utilities__included_
+// nlohhman/json included, or alib_force_json defined use these utilities
+
+using ___alib__json = nlohmann::json;
+#define JSONREF ___alib__json &
+
+
+int alib_j_geti(JSONREF j) {
+    return j.get<int>();
+}
+float alib_j_getf(JSONREF j) {
+    return j.get<float>();
+}
+double alib_j_getd(JSONREF j) {
+    return j.get<double>();
+}
+std::string alib_j_getstr(JSONREF j) {
+    return j.get<std::string>();
+}
+const char* alib_j_getchara(JSONREF j) {
+    return alib_j_getstr(j).c_str();
+}
+bool alib_j_streq(JSONREF j, std::string match) {
+    std::string src = j.get<std::string>();
+    if (src.size() < match.size()) {}
+    return (src.compare(match) == 0);
+}
+bool alib_j_ieq(JSONREF j, int match) {
+    return (j.get<int>() == match);
+}
+bool alib_j_feq(JSONREF j, float match) {
+    return (j.get<float>() == match);
+}
+// If [j] contains keys formatted as "a<newline>b<newline>c"
+// Note: replace <newline> with \\n (unescaped due to comment)
+// (eg if the json element is {"a":{"b":{"c":"d"}}} it would return true)
+bool alib_j_contkeys(___alib__json j, std::string _s) {
+    ___alib__json j_t = j;
+    std::vector<std::string> s_keys;
+    alib_strsplit(_s, '\n', s_keys);
+
+
+    for (int i = 0; i < s_keys.size(); i++) {
+        std::string s_cur = s_keys[i];
+        if (!j_t.contains(s_cur)) {
+            return false;
+        }
+        j_t = j_t.at(s_cur);
+    }
+    return true;
+
+}
+#undef JSONREF
 
 
 #endif
+
+

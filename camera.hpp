@@ -19,11 +19,12 @@ public:
 	};
 	void Update() {
 	}
-	Vector2 Vector2ToCameraSpace(Vector2 v) {
-		return (v + -*m_target);
+	static Vector2 Vector2ToCameraSpace(Vector2 v) {
+		return (v + -*GetInstance()->m_target);
 	}
-	SDL_Rect* RectToCameraSpace(SDL_Rect* v) {
-		Vector2 _mtargetv(m_target->x + v->x, m_target->y + v->y);
+	static SDL_Rect* RectToCameraSpace(SDL_Rect* v) {
+		Vector2 _mtargetv(GetInstance()->m_target->x + v->x, GetInstance()->m_target->y + v->y);
+		std::cout << "Offset: " << _mtargetv << '\n';
 		v->x -= _mtargetv.x;
 		v->y -= _mtargetv.y;
 		return v;

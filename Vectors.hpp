@@ -1,6 +1,15 @@
 #pragma once
 
 #include <iostream>
+#include <glm/glm.hpp>
+struct VectorF : glm::vec<1, float> {
+	VectorF(auto _iv) {
+		*this = _iv;
+	}
+	operator int() {
+		return *this;
+	}
+};
 typedef int Vector;
 struct Vector2 {
 	Vector x = 0; 
@@ -41,16 +50,16 @@ struct Vector2 {
 	Vector2 operator *(Vector2 other) {
 		return { x * other.x, y * other.y };
 	}
-	Vector2 operator -(int other) {
+	Vector2 operator -(auto other) {
 		return { x - other, y - other };
 	}
-	Vector2 operator +(int other) {
+	Vector2 operator +(auto other) {
 		return { x + other, y + other };
 	}
-	Vector2 operator /(int other) {
+	Vector2 operator /(auto other) {
 		return { x / other, y / other };
 	}
-	Vector2 operator *(int other) {
+	Vector2 operator *(auto other) {
 		return { x * other, y * other };
 	}
 	bool operator ==(const nullptr_t other) {
@@ -119,6 +128,7 @@ struct VectorRect {
 
 	};
 
+
 	static bool checkCollision(VectorRect* a, VectorRect* b)
 	{
 		return SDL_HasIntersection((SDL_Rect*)a, (SDL_Rect*)b);;
@@ -156,6 +166,7 @@ struct Vector3 {
 
 struct Transform {
 	Vector2 position;
-	Vector angle;
 	Vector2 scale;
+	Vector2 origin;
+	Vector angle;
 };

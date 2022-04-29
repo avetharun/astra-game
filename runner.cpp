@@ -1,8 +1,21 @@
 #define _CRT_SECURE_NO_WARNINGS
+
 #include <iostream>
-#include <algorithm>
 #include "utils.hpp"
+// THIS MUST RUN BEFORE EVERYTHING ELSE!!!
+alib_inline_run _nn{ [&]() {
+	// Running from (out)/lib/game.exe
+	if (alib_endswith(alib_gcwd(), "\\lib") || alib_file_exists("SDL2.dll")) {
+		alib_show_console();
+		std::cout << "User ran cw.exe or cwd contains SDL2.dll! Falling back to previous directory.\nNext time, please run the executable in the previous directory!\n";
+		alib_scwd("../");
+	}
+} };
+
+#include <algorithm>
 #include "game.hpp"
+
+
 
 int main(int argc, char **argv)
 {
@@ -11,8 +24,8 @@ int main(int argc, char **argv)
 		exit(-1000);
 	}
 	
-	Win->argc = argc;
-	Win->argv = argv;
+	Window::WindowInstance->argc = argc;
+	Window::WindowInstance->argv = argv;
 	Window::WindowInstance->workers.push_back(
 		std::thread([&]() {
 			while (1) {
@@ -24,19 +37,14 @@ int main(int argc, char **argv)
 						if (
 							!(ic == oc) &&
 							VectorRect::checkCollision(
-								ic->rect,
-								oc->rect
+								ic->rect_cs,
+								oc->rect_cs
 							  )
 							)
 						{
-							ic->OnColliderHit(oc);
+							ic->OnColliderHit(oc); 
 						}
 					}
-					for (unsigned int si = 0; si < Sprite::_mglobalspritearr.size(); si++) {
-						Sprite* s = Sprite::_mglobalspritearr[si];
-					}
-				}
-				if (Camera::GetInstance()->m_target) {
 				}
 				Sleep(1);
 			}
@@ -45,7 +53,7 @@ int main(int argc, char **argv)
 	while (Window::WindowInstance->running) {
 		Window::WindowInstance->procEvent();
 		Window::WindowInstance->IdleFuncInternal();
-		Sleep(1);
+		Sleep(0);
 	}
 	for (unsigned int i = 0; i < Window::WindowInstance->workers.size(); i++) {
 		try {
@@ -61,4 +69,5 @@ int main(int argc, char **argv)
 	ImGui::DestroyContext();
 
 	SDL_Quit();
+	exit(0);
 }

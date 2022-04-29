@@ -16,6 +16,9 @@
     <Filter Include="engine\cwlib">
       <UniqueIdentifier>{9be541f5-873a-4bf8-ac04-1916e795a8ac}</UniqueIdentifier>
     </Filter>
+    <Filter Include="lua">
+      <UniqueIdentifier>{183fc9b5-7853-4651-945d-953f64c1d05a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="game.hpp">
@@ -102,13 +105,22 @@
     <ClInclude Include="cwlib\_cwincludes.h">
       <Filter>engine\cwlib</Filter>
     </ClInclude>
+    <ClInclude Include="cwlib\cwabt.hpp">
+      <Filter>engine\cwlib</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
-    <None Include="out\debug.cwl">
+    <None Include="out\json.lua">
+      <Filter>lua</Filter>
+    </None>
+    <None Include="out\debug.lua">
+      <Filter>lua</Filter>
+    </None>
+    <None Include="out\main.cwl">
       <Filter>world</Filter>
     </None>
-    <None Include="out\l_home.cwl">
+    <None Include="build\tra\test.cwl">
       <Filter>world</Filter>
     </None>
   </ItemGroup>

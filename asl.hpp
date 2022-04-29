@@ -38,6 +38,8 @@ void initDataLua(Sprite* _s) {
 Transform* _newTransformLua(std::array<int, 2> pos, int a) {
 	return new Transform{
 		{pos[0],pos[1]},
+		{},
+		{},
 		a
 	};
 }
@@ -226,6 +228,7 @@ alib_inline_run _nn([&]() {
 	deleteGlobalLua(state, "debug");
 	deleteGlobalLua(state, "os");
 	deleteGlobalLua(state, "xpcall");
+	deleteGlobalLua(state, "io");
 	deleteGlobalLua(state, "package");
 
 
@@ -245,8 +248,11 @@ alib_inline_run _nn([&]() {
 	LuaModule playerModu(state, "Player");
 	LuaModule cwModu(state, "cw");
 	LuaModule consModu(state, "console");
+	LuaModule audModu(state, "audio");
 
-
+	luaL_dostring(state, R"(
+dofile("debug.lua")
+)");
 	LuaModule cwErrorStates(state, "cwErrorState");
 	cwErrorStates.def("error", (int)cwError::CW_ERROR);
 	cwErrorStates.def("warn", (int)cwError::CW_WARN);
@@ -258,14 +264,31 @@ alib_inline_run _nn([&]() {
 		cwError::serror(str.c_str());
 	});
 	consModu.fun("log", [&](std::string str) {
-		cwError::sstate(cwError::CW_SILENT);
+		cwError::sstate(cwError::CW_MESSAGE);
+		cwError::serror(str.c_str());
+	});
+	consModu.fun("debug", [&](std::string str) {
+		cwError::sstate(cwError::CW_DEBUG);
 		cwError::serror(str.c_str());
 	});
 	consModu.fun("warn", [&](std::string str) {
 		cwError::sstate(cwError::CW_WARN);
 		cwError::serror(str.c_str());
 	});
+	audModu.fun("load", [&](std::string path){
+		AudioWAV* w = new AudioWAV(path);
+		return &audModu;
+	});
+	audModu.fun("play", [](std::string name) {
+		if (!AudioWAV::audiofiles.contains(name)) {
+			cwError::sstate(cwError::CW_ERROR);
+			cwError::serrof("No audio found with the path %s! Playing anyways..", name.c_str());
+			AudioWAV* w = new AudioWAV(name);
+		}
+		AudioWAV::audiofiles.at(name)->Play();
+	});
 
+	
 
 	luaTransformCls.ctor<std::array<int,2>,int>();
 	luaTransformCls.fun("getPosition", &luaTransform::getPosition);
@@ -287,15 +310,31 @@ alib_inline_run _nn([&]() {
 	
 	luaColHitCls.def("pos", &Raycast2D::hit.pos);
 
+	global.fun("getSpriteById", [&](std::string id) -> Sprite* {
+		Win->cons.pushf("Getting sprite at id %s", id.c_str());
+		Sprite* _s = Sprite::getElementByID(id);
+		if (_s == nullptr) {
+			cwError::sstate(cwError::CW_ERROR);
+			cwError::serrof("No sprite exists at id %s!", id.c_str());
+			Sprite* _s_errorf = Sprite::getElementByID("_CW_ERROR_SPRITE");
+			if (_s_errorf == nullptr) {
+				_s_errorf = new Sprite();
+				_s_errorf->setID("_CW_ERROR_SPRITE");
+			}
+			return _s_errorf;
+		}
 
-	//luaSpriteCls.ctor<const char*>();
-	//luaSpriteCls.fun("Move", &Sprite::Move);
-	//luaSpriteCls.fun("Rotate", &Sprite::Rotate);
-	//luaSpriteCls.fun("Scale", &Sprite::luaScale);
-	//luaSpriteCls.fun("setEnabled", &Sprite::setEnabled);
-	//luaSpriteCls.fun("setTransform", &Sprite::SetTransform);
-	//luaSpriteCls.fun("getPosition", &Sprite::luaGetPosition);
-	//luaSpriteCls.fun("getRotation", &Sprite::luaGetRotation);
+		Win->cons.pushf("Got sprite with id %s", id.c_str());
+		return _s;
+	});
+	luaSpriteCls.ctor<const char*>();
+	luaSpriteCls.fun("Move", &Sprite::Move);
+	luaSpriteCls.fun("Rotate", &Sprite::Rotate);
+	luaSpriteCls.fun("Scale", &Sprite::luaScale);
+	luaSpriteCls.fun("setEnabled", &Sprite::setEnabled);
+	luaSpriteCls.fun("setTransform", &Sprite::SetTransform);
+	luaSpriteCls.fun("getPosition", &Sprite::luaGetPosition);
+	luaSpriteCls.fun("getRotation", &Sprite::luaGetRotation);
 
 	
 

@@ -1,24 +1,18 @@
 {
   "layout": [
     {
-      "id": "tex_test",
-      "type": "texture",
-      "schema": "animated",
+      "id": "__overlay_ui",
+      "schema": [
+        "ui",
+        "__image"
+      ],
       "asset_data": {
-        "filename": "sprites/test.png",
-        "transform": {
-          "x": 0,
-          "y": 0,
-          "w": 1000,
-          "h": 1000
-        }
+        "filename": "sprites/sprites.png",
+        "uv": [
+          [ 0, 91 ],
+          [ 256, 347 ]
+        ]
       }
-    },
-    {
-      "type": "NOT_A_TEXTURE"
-    },
-    {
-      "type": "texture"
     }
   ]
 }

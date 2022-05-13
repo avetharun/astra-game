@@ -24,6 +24,7 @@
     <ProjectGuid>{5574e677-0075-4d1d-9ea8-c495a0fa0a0f}</ProjectGuid>
     <RootNamespace>windconsolegame</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>astra</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -99,6 +100,10 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DisableSpecificWarnings>4302; 4311;</DisableSpecificWarnings>
       <StringPooling>true</StringPooling>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>c.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>C:\Code\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -110,7 +115,7 @@
       </BaseAddress>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <AdditionalDependencies>C:\Code\devel\VC\x86\*.lib</AdditionalDependencies>
+      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>robocopy out $(OutDir) /e /mt  /NJH /NJS /nc /ns /np &amp;set errorlevel=0</Command>
@@ -127,6 +132,10 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DisableSpecificWarnings>4302; 4311;</DisableSpecificWarnings>
       <StringPooling>true</StringPooling>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>c.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>C:\Code\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -140,7 +149,7 @@
       </BaseAddress>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <AdditionalDependencies>C:\Code\devel\VC\x86\*.lib</AdditionalDependencies>
+      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>robocopy out $(OutDir) /e /mt  /NJH /NJS /nc /ns /np &amp;set errorlevel=0</Command>
@@ -156,6 +165,9 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DisableSpecificWarnings>4302; 4311;</DisableSpecificWarnings>
       <StringPooling>true</StringPooling>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>c.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -167,7 +179,7 @@
       </BaseAddress>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib</AdditionalDependencies>
+      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>
@@ -189,6 +201,10 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DisableSpecificWarnings>4302; 4311;</DisableSpecificWarnings>
       <StringPooling>true</StringPooling>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>c.pch</PrecompiledHeaderOutputFile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>C:\Code\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -202,13 +218,14 @@
       </BaseAddress>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib</AdditionalDependencies>
+      <AdditionalDependencies>C:\Code\devel\VC\x64\*.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>robocopy out $(OutDir) /e /mt  /NJH /NJS /nc /ns /np &amp;set errorlevel=0</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="guiRendererDefs.hpp" />
     <ClCompile Include="imgui\imgui.cpp" />
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_impl_sdl.cpp" />
@@ -231,6 +248,7 @@
     <ClInclude Include="e_colors.hpp" />
     <ClInclude Include="e_keybindings.h" />
     <ClInclude Include="game.hpp" />
+    <ClInclude Include="GUIRenderer.h" />
     <ClInclude Include="imgui\imconfig.h" />
     <ClInclude Include="imgui\imgui.h" />
     <ClInclude Include="imgui\imgui_impl_sdl.h" />
@@ -240,6 +258,7 @@
     <ClInclude Include="imgui\imstb_textedit.h" />
     <ClInclude Include="imgui\imstb_truetype.h" />
     <ClInclude Include="lua.hpp" />
+    <ClInclude Include="LUA_INCLUDE.h" />
     <ClInclude Include="physics.hpp" />
     <ClInclude Include="playercontroller.hpp" />
     <ClInclude Include="preprocessors.h" />
@@ -249,18 +268,19 @@
     <ClInclude Include="Vectors.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="build\tra\test.cwl" />
+    <None Include="build\tra\test.lua" />
     <None Include="cpp.hint" />
     <None Include="out\debug.lua" />
     <None Include="out\json.lua" />
     <None Include="out\main.cwl" />
+    <None Include="out\test.cwl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties />
+      <UserProperties out_4test_1cwl__JsonSchema="" />
     </VisualStudio>
   </ProjectExtensions>
 </Project>

@@ -1,4 +1,4 @@
-#pragma once
+
 #ifndef AUDIO_H
 #define AUDIO_H
 #include <iosfwd>
@@ -51,6 +51,9 @@ public:
 		status = WAV_UNINIT;
 		chunk = nullptr;
 		chunkw = nullptr;
+	}
+	static AudioWAV* lu_new(std::string _nm) {
+		return new AudioWAV(_nm);
 	}
 	const char* GetError() { return status; }
 	void Loop () {

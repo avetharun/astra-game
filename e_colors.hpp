@@ -1,4 +1,4 @@
-#pragma once
+
 
 class WinConsoleClr {
 	static const char* clrRed;

@@ -1,10 +1,6 @@
-#pragma once
 #ifndef ENGINE_HPP
 #define ENGINE_HPP
 #include "utils.hpp"
-#if!defined(NDEBUG)
-	#define NDEBUG
-#endif
 #ifndef noop
 #define noop (void)__noop
 #endif
@@ -38,6 +34,8 @@ typedef __int64 int64;
 #include <SDL2/SDL_opengl.h>
 #include <SDL2/SDL_opengl_glext.h>
 
+
+#include "GUIRenderer.h"
 
 
 struct Window {
@@ -78,8 +76,10 @@ public:
 		}
 	};
 	struct Time {
+		
 		float TimeSinceStart = 0;
 		static long double DeltaTime;
+		static float fps;
 		struct Timer {
 		private: 
 			std::chrono::steady_clock::time_point _start;
@@ -150,7 +150,7 @@ public:
 	bool running = true;
 	private: bool started = false;
 public:
-	bool debug;
+	bool debug = false;
 	Time time;
 	std::vector<std::thread> workers;
 	unsigned char* consolepx;
@@ -202,11 +202,12 @@ public:
 			std::cout << "SDL_Image version : " << SDL_IMAGE_MAJOR_VERSION << "." << SDL_IMAGE_MINOR_VERSION << "." << SDL_IMAGE_PATCHLEVEL << std::endl;
 		#endif
 
+		SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 		SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 		hdc = GetDC(hwnd);
 		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, (SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI));
 		hwnd = ::GetActiveWindow();
-		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED);
 		SDL_SetRenderDrawBlendMode(SDL_REND, SDL_BLENDMODE_BLEND);
 		SDL_GLCTX = SDL_GL_CreateContext(SDL_WIND);
 		
@@ -218,7 +219,9 @@ public:
 		ImGui::StyleColorsDark();
 		ImGui_ImplSDL2_InitForSDLRenderer(SDL_WIND);
 		ImGui_ImplSDLRenderer_Init(SDL_REND);
-
+		initRenderer__PHYS(SDL_REND);
+		keyboard.flush();
+		SDL_Texture* texture = SDL_CreateTexture(SDL_REND, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
 		//HideConsole();
 
 	};
@@ -229,7 +232,6 @@ public:
 	void PostUpdateInternal();
 	void PreRenderInternal();
 	void PostRenderInternal();
-
 
 
 
@@ -288,7 +290,7 @@ public:
 	void DebugWindow() {
 		ImGui::Begin("Debug Console");
 		ImGui::BeginChildFrame(10, {0,ImGui::GetWindowHeight() - 75});
-		ImGui::TextUnformatted(cons.debugWindowConsoleText.begin());
+		ImGui::TextColouredFormatted(cons.debugWindowConsoleText.begin());
 		if (cons.m_scrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
 			ImGui::SetScrollHereY(1.0f);
 			cons.m_scrollToBottom--;
@@ -300,17 +302,20 @@ public:
 		bool _isEnterPressed = ImGui::InputText("##consInput", cons.debugWindowInput, 512, ImGuiInputTextFlags_EnterReturnsTrue);
 		if (_isEnterPressed) {
 			std::string inputCommand(cons.debugWindowInput);
+			// truncate command from args
 			std::string::size_type cmdend = inputCommand.find(' ');
 			if (cmdend != std::string::npos) {
 				inputCommand = inputCommand.substr(0, cmdend);
 				cons.handlecmdf(inputCommand, cons.debugWindowInput + cmdend + 1);
 			}
-			cons.handlecmdf(inputCommand, (char*)"\0");
+			else {
+				cons.handlecmdf(inputCommand, (char*)"\0");
+			}
 			// resets input text
 			cons.debugWindowInput[0] = {0}; // generates a call to memset(debugWindowInput[0], '\0', 8)
 		}
 		debug_window_open = ImGui::IsWindowFocused();
-		ImGui::Text("Application average %.2f ms/frame (%.1f FPS)", Time::DeltaTime, ImGui::GetIO().Framerate);
+		ImGui::Text("Application average %.2f ms/frame (%.1f FPS)", Time::DeltaTime, Time::fps);
 		ImGui::End();
 		
 	}
@@ -321,14 +326,9 @@ public:
 	};
 
 	void RenderInternal() {
-		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
-		// Fullbright enabled?
-		if (getbitv(data, 1)) {
-			SDL_SetRenderDrawColor(SDL_REND, 128, 128, 128, 255);
-		}
-		SDL_RenderClear(SDL_REND);
 		BatchRenderer().Render();
 		PostPreRender();
+		UI::GUIRenderer::Render();
 		ImGui::Render();
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 		SDL_RenderPresent(SDL_REND);
@@ -396,6 +396,15 @@ public:
 
 
 	void IdleFuncInternal() {
+		ImGui_ImplSDLRenderer_NewFrame();
+		ImGui_ImplSDL2_NewFrame(Window::WindowInstance->SDL_WIND);
+		ImGui::NewFrame();
+		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
+		// Fullbright enabled?
+		if (getbitv(data, 1)) {
+			SDL_SetRenderDrawColor(SDL_REND, 128, 128, 128, 255);
+		}
+		SDL_RenderClear(SDL_REND);
 		if (!started) {
 			started = true;
 			Start();
@@ -413,15 +422,6 @@ public:
 
 		SDL_GetMouseState(&mouse.x, &mouse.y);
 		center = Vector2{ size.x / 2, size.y / 2 };
-		SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
-		SDL_RenderClear(SDL_REND);
-
-
-		ImGui_ImplSDLRenderer_NewFrame();
-		ImGui_ImplSDL2_NewFrame(SDL_WIND);
-		ImGui::NewFrame();
-
-
 
 		PreUpdateInternal();
 		UpdateInternal();
@@ -451,6 +451,7 @@ public:
 			}
 		}
 		time.DeltaTime = (double)ImGui::GetIO().DeltaTime * 1000;
+		Time::fps = ImGui::GetIO().Framerate;
 	}
 	void AddComponent(Component* c) {
 		*this << c;
@@ -462,11 +463,11 @@ public:
 
 void recalc_rect_positions() {
 	for (int i = 0; i < RectCollider2d::_mGlobalColArr.size(); i++) {
-		auto m = RectCollider2d::_mGlobalColArr[i];
-		if (m->layer == COL_PLAYER) {
+		RectCollider2d* m = RectCollider2d::_mGlobalColArr[i];
+		if (!SUCCEEDED(m)) { continue; }
+		if (m->layer & COL_PLAYER) {
 			continue;
 		}
-
 		m->rect_cs->x = m->rect->x + -Camera::GetInstance()->m_target->x;
 		m->rect_cs->y = m->rect->y + -Camera::GetInstance()->m_target->y;
 	}
@@ -509,6 +510,7 @@ void Window::PostRenderInternal() {
 	}
 }
 long double Window::Time::DeltaTime = 0.0;
+float Window::Time::fps = 0.0f;
 #include "cwlib/cwlib.hpp"
 #pragma endregion
 #define Keyboard Window::WindowInstance->keyboard

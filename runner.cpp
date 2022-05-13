@@ -1,5 +1,4 @@
 #define _CRT_SECURE_NO_WARNINGS
-
 #include <iostream>
 #include "utils.hpp"
 // THIS MUST RUN BEFORE EVERYTHING ELSE!!!
@@ -19,23 +18,23 @@ alib_inline_run _nn{ [&]() {
 
 int main(int argc, char **argv)
 {
-	if (Window::WindowInstance == nullptr) {
-		std::cout << "Window hasn't been created - not able to start!";
-		exit(-1000);
-	}
-	
+	alib_assert_p(Window::WindowInstance == nullptr, "Window hasn't been initialized!", 0);
 	Window::WindowInstance->argc = argc;
 	Window::WindowInstance->argv = argv;
 	Window::WindowInstance->workers.push_back(
 		std::thread([&]() {
-			while (1) {
+			while (Window::WindowInstance->running) {
+				alib_remove_any_of<Sprite*>(Sprite::_mglobalspritearr, nullptr);
+				alib_remove_any_of<RectCollider2d*>(RectCollider2d::_mGlobalColArr, nullptr);
+				RectCollider2d::_mGlobalColArr.shrink_to_fit();
 				for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
 					RectCollider2d* oc = RectCollider2d::_mGlobalColArr[o];
-
+					if (!SUCCEEDED(oc)) { continue; }
 					for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size(); i++) {
 						RectCollider2d* ic = RectCollider2d::_mGlobalColArr[i];
 						if (
-							!(ic == oc) &&
+							(SUCCEEDED(ic) && SUCCEEDED(oc)) && (ic != oc) &&
+							(SUCCEEDED(ic->rect_cs) || SUCCEEDED(ic->rect_cs)) &&
 							VectorRect::checkCollision(
 								ic->rect_cs,
 								oc->rect_cs
@@ -46,6 +45,12 @@ int main(int argc, char **argv)
 						}
 					}
 				}
+				std::sort(Sprite::_mglobalspritearr.begin(), Sprite::_mglobalspritearr.end(), [](Sprite* a, Sprite* b)
+					{
+						return a->layer < b->layer;
+					}
+				);
+
 				Sleep(1);
 			}
 		})
@@ -53,7 +58,7 @@ int main(int argc, char **argv)
 	while (Window::WindowInstance->running) {
 		Window::WindowInstance->procEvent();
 		Window::WindowInstance->IdleFuncInternal();
-		Sleep(0);
+		alib_sleep_micros(10);
 	}
 	for (unsigned int i = 0; i < Window::WindowInstance->workers.size(); i++) {
 		try {

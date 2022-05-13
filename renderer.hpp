@@ -15,15 +15,199 @@
 #include <typeindex>
 #include <math.h>
 #include <algorithm>
-
-#include <luaaa.hpp>
 #include "lua.hpp"
 #include "cwlib/cwerror.h"
+#include <lauxlib.h>
+#include "imgui/imgui.h"
+
+#include <variant>
+#include <gl/glew.h>
+#include <gl/GL.h>
 
 
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
 
+// Simple helper function to load an image into a OpenGL texture with common settings
+bool ImplLoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
+{
+	// Load from file
+	int image_width = 0;
+	int image_height = 0;
+	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
+	if (image_data == NULL)
+		return false;
+	
+	// Create a OpenGL texture identifier
+	GLuint image_texture;
+	glGenTextures(1, &image_texture);
+	glBindTexture(GL_TEXTURE_2D, image_texture);
+
+	// Setup filtering parameters for display
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+	// Upload pixels into texture
+#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+#endif
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+	stbi_image_free(image_data);
+
+	*out_texture = image_texture;
+	*out_width = image_width;
+	*out_height = image_height;
+
+	return true;
+}
+
+
+namespace ImGui {
+	const char ColorMarkerStart = '^';
+	const char ColorMarkerEnd = ']';
+	struct Colour {
+		unsigned char colour[4] = {255,255,255,255};
+		unsigned char getr() {
+			return (colour)[0];
+		}
+		unsigned char getg() {
+			return (colour)[1];
+		}
+		unsigned char getb() {
+			return (colour)[2];
+		}
+		unsigned char geta() {
+			return (colour)[3];
+		}
+		void setr(unsigned char _r) {
+			colour[0] = _r;
+		}
+		void setg(unsigned char _g) {
+			colour[1] = _g;
+		}
+		void setb(unsigned char _b) {
+			colour[2] = _b;
+		}
+		void seta(unsigned char _a) {
+			colour[3] = _a;
+		}
+		Colour(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
+			this->setr(r);
+			this->setg(g);
+			this->setb(b);
+			this->seta(a);
+		}
+		Colour() {}
+		const char* tostring() {
+			return alib_strfmt("%c%02x%02x%02x%c", ColorMarkerStart, getr(), getg(), getb(), ColorMarkerEnd);
+		}
+	};
+	bool ProcessInlineHexColorImpl(const char* start, const char* end, ImVec4& color)
+	{
+		const int hexCount = (int)(end - start);
+		if (hexCount == 6 || hexCount == 8)
+		{
+			char hex[9];
+			strncpy(hex, start, hexCount);
+			hex[hexCount] = 0;
+
+			unsigned int hexColor = 0;
+			if (sscanf(hex, "%x", &hexColor) > 0)
+			{
+				color.x = static_cast<float>((hexColor & 0x00FF0000) >> 16) / 255.0f;
+				color.y = static_cast<float>((hexColor & 0x0000FF00) >> 8) / 255.0f;
+				color.z = static_cast<float>((hexColor & 0x000000FF)) / 255.0f;
+				color.w = 1.0f;
+				if (hexCount == 8)
+				{
+					color.w = static_cast<float>((hexColor & 0xFF000000) >> 24) / 255.0f;
+				}
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	void TextColouredFormatted(const char* fmt, ...)
+	{
+		char tempStr[4096];
+
+		va_list argPtr;
+		va_start(argPtr, fmt);
+		_vsnprintf(tempStr, sizeof(tempStr), fmt, argPtr);
+		va_end(argPtr);
+		tempStr[sizeof(tempStr) - 1] = '\0';
+
+		bool pushedColorStyle = false;
+		const char* textStart = tempStr;
+		const char* textCur = tempStr;
+		while (textCur < (tempStr + sizeof(tempStr)) && *textCur != '\0')
+		{
+			if (*textCur == ColorMarkerStart)
+			{
+				// Print accumulated text
+				if (textCur != textStart)
+				{
+					ImGui::TextUnformatted(textStart, textCur);
+					ImGui::SameLine(0.0f, 0.0f);
+				}
+
+				// Process color code
+				const char* colorStart = textCur + 1;
+				do
+				{
+					++textCur;
+				} while (*textCur != '\0' && *textCur != ColorMarkerEnd);
+
+				// Change color
+				if (pushedColorStyle)
+				{
+					ImGui::PopStyleColor();
+					pushedColorStyle = false;
+				}
+
+				ImVec4 textColor;
+				if (ProcessInlineHexColorImpl(colorStart, textCur, textColor))
+				{
+					ImGui::PushStyleColor(ImGuiCol_Text, textColor);
+					pushedColorStyle = true;
+				}
+
+				textStart = textCur + 1;
+			}
+			else if (*textCur == '\n')
+			{
+				// Print accumulated text an go to next line
+				ImGui::TextUnformatted(textStart, textCur);
+				textStart = textCur + 1;
+			}
+
+			++textCur;
+		}
+
+		if (textCur != textStart)
+		{
+			ImGui::TextUnformatted(textStart, textCur);
+		}
+		else
+		{
+			ImGui::NewLine();
+		}
+
+		if (pushedColorStyle)
+		{
+			ImGui::PopStyleColor();
+		}
+	}
+
+	void TextColouredUnformatted(const char* text) {
+		TextColouredFormatted(text);
+	}
+};
 
 void initRenderer(SDL_Renderer* r, SDL_Window* w) {
 	SDL_REND_RHPP = r;
@@ -93,7 +277,7 @@ struct Sprite{
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
-	int layer = -10;
+	int32_t layer = -10;
 	bool enableCameraOffset = false; // Enables/disables if camera::m_Offset will offset sprite position.
 	static std::vector<Sprite*> _mglobalspritearr;
 	bool center = false;
@@ -199,10 +383,10 @@ struct Sprite{
 
 	
 	void operator ~() {
-		auto s_sf = surfFilemaps;
+		auto& s_sf = surfFilemaps;
 		// the pixels variable won't be initialized if it's invalid. If so, ignore it and just remove this object.
 		s_sf.erase(name);
-		auto sv = Sprite::_mglobalspritearr;
+		auto& sv = Sprite::_mglobalspritearr;
 		sv.erase(std::remove(sv.begin(), sv.end(), this), sv.end());
 		SDL_FreeSurface(surf);
 		SDL_DestroyTexture(Texture);
@@ -350,11 +534,6 @@ public:
 
 struct BatchRenderer {
 	void Render() {
-		std::sort(Sprite::_mglobalspritearr.begin(), Sprite::_mglobalspritearr.end(), [](Sprite* a, Sprite* b)
-			{ 
-				return a->layer < b->layer; 
-			}
-		);
 		for (unsigned int i = 0; i < Sprite::_mglobalspritearr.size(); i++) {
 			Sprite* s = Sprite::_mglobalspritearr[i];
 			if (s == NULL || s == nullptr || &s->pixels == NULL) {
@@ -366,5 +545,17 @@ struct BatchRenderer {
 
 	}
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 #endif

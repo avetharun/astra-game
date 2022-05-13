@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __cw_vector_hpp
+#define __cw_vector_hpp
 
 #include <iostream>
 #include <glm/glm.hpp>
@@ -12,6 +13,20 @@ struct VectorF : glm::vec<1, float> {
 };
 typedef int Vector;
 struct Vector2 {
+
+	static Vector2* lu_new(int x, int y) {
+		Vector2* _n = new Vector2();
+		_n->x = x;
+		_n->y = y;
+		return _n;
+	}
+	Vector gx() { return this->x; }
+	Vector gy() { return this->y; }
+	Vector sx(int v = INT32_MAX) { this->x = v; return this->x; }
+	Vector sy(int v = INT32_MAX) { this->y = v; return this->y; }
+
+	Vector2* lu_get() { return this; }
+
 	Vector x = 0; 
 	Vector y = 0;
 	Vector2() {}
@@ -50,16 +65,16 @@ struct Vector2 {
 	Vector2 operator *(Vector2 other) {
 		return { x * other.x, y * other.y };
 	}
-	Vector2 operator -(auto other) {
+	Vector2 operator -(int other) {
 		return { x - other, y - other };
 	}
-	Vector2 operator +(auto other) {
+	Vector2 operator +(int other) {
 		return { x + other, y + other };
 	}
-	Vector2 operator /(auto other) {
+	Vector2 operator /(int other) {
 		return { x / other, y / other };
 	}
-	Vector2 operator *(auto other) {
+	Vector2 operator *(int other) {
 		return { x * other, y * other };
 	}
 	bool operator ==(const nullptr_t other) {
@@ -83,6 +98,8 @@ struct Vector2 {
 	bool operator < (int other) {
 		return (x < other && y < other) ? true : false;
 	}
+	Vector luaL_getx() { return x; }
+	Vector luaL_gety() { return y; }
 	static Vector2 up;
 	static Vector2 right;
 	friend std::ostream& operator<<(std::ostream& os, const Vector2& o)
@@ -99,16 +116,58 @@ struct Vector2 {
 	static Vector2 distance(Vector2 one, Vector2 two) {
 		return one - two;
 	}
+	void operator ~() {
+		delete[] this;
+	}
 };
 
 Vector2 Vector2::up = Vector2{ 0,1 };
 Vector2 Vector2::right = Vector2{ 1,0 };
 struct VectorRect {
-	static SDL_Rect _emptyRect;
 	Vector w = 1;
 	Vector h = 1;
 	Vector x = 0;
 	Vector y = 0;
+	static SDL_Rect _emptyRect;
+
+	static VectorRect* lu_new(int x, int y, int w, int h) {
+		VectorRect* _n = new VectorRect();
+		_n->x = x;
+		_n->y = y;
+		_n->w = w;
+		_n->h = h;
+		return _n;
+	}
+	static SDL_Rect* lu_new_SDL(int x, int y, int w, int h) {
+		SDL_Rect* _n = new SDL_Rect();
+		_n->x = x;
+		_n->y = y;
+		_n->w = w;
+		_n->h = h;
+		return _n;
+	}
+	Vector sx(int v = INT32_MAX) { if (v == INT32_MAX) { return this->x; } this->x = v; return this->x; }
+	Vector sy(int v = INT32_MAX) { if (v == INT32_MAX) { return this->y; } this->y = v; return this->y; }
+	Vector sw(int v = INT32_MAX) { if (v == INT32_MAX) { return this->w; } this->w = v; return this->w; }
+	Vector sh(int v = INT32_MAX) { if (v == INT32_MAX) { return this->h; } this->h = v; return this->h; }
+
+	Vector gx() { return this->x; }
+	Vector gy() { return this->y; }
+	Vector gw() { return this->w; }
+	Vector gh() { return this->h; }
+	// Subtract sub from dst, and put the result in dst
+	static void SubRectI(SDL_Rect* dst, SDL_Rect* sub) {
+		dst->x -= sub->x;
+		dst->y -= sub->y;
+		dst->w -= sub->w;
+		dst->h -= sub->h;
+	}
+	static SDL_Rect SubRect(SDL_Rect* first, SDL_Rect* second) {
+		VectorRect proxy1(*first);
+		VectorRect proxy2(*second);
+		return proxy1 - proxy2;
+	}
+
 	VectorRect() {}
 	VectorRect(int _w, int _h, int _x, int _y) {
 		w = _w; h = _h; x = _x; y = _y;
@@ -124,18 +183,54 @@ struct VectorRect {
 	VectorRect(SDL_Rect o) {
 		{o.x, o.y, o.w, o.h; };
 	}
-	Vector2 operator +(Vector2 other) {
-
+	VectorRect operator +(VectorRect other) {
+		return {
+			this->x + other.x,
+			this->y + other.y,
+			this->w + other.w,
+			this->h + other.h
+		};
+	};
+	VectorRect operator -(VectorRect other) {
+		return {
+			this->x - other.x,
+			this->y - other.y,
+			this->w - other.w,
+			this->h - other.h
+		};
+	};
+	VectorRect operator /(VectorRect other) {
+		return {
+			this->x / other.x,
+			this->y / other.y,
+			this->w / other.w,
+			this->h / other.h
+		};
+	};
+	VectorRect operator *(VectorRect other) {
+		return {
+			this->x * other.x,
+			this->y * other.y,
+			this->w * other.w,
+			this->h * other.h
+		};
 	};
 
 
+	static bool lu_intersects(VectorRect a, VectorRect b) {
+		bool state = false;
+		SDL_Rect ra = a;
+		SDL_Rect rb = b;
+		return SDL_HasIntersection(&ra, &rb);
+	}
+
 	static bool checkCollision(VectorRect* a, VectorRect* b)
 	{
-		return SDL_HasIntersection((SDL_Rect*)a, (SDL_Rect*)b);;
+		return SDL_HasIntersection((SDL_Rect*)a, (SDL_Rect*)b);
 	}
 	static bool checkCollision(SDL_Rect* a, SDL_Rect* b)
 	{
-		return SDL_HasIntersection(a, b);;
+		return SDL_HasIntersection(a, b);
 	}
 	friend std::ostream& operator<<(std::ostream& os, const VectorRect& o)
 	{
@@ -145,9 +240,9 @@ struct VectorRect {
 };
 SDL_Rect VectorRect::_emptyRect = SDL_Rect{ 0, 0, 0, 0 };
 struct Vector3 {
-	Vector x;
-	Vector y;
-	Vector z;
+	Vector x = 0;
+	Vector y = 0;
+	Vector z = 0;
 	Vector3() {}
 	Vector3(Vector _x, Vector _y, Vector _z) {
 		x = _x;
@@ -162,11 +257,15 @@ struct Vector3 {
 	}
 };
 
-
-
 struct Transform {
-	Vector2 position;
-	Vector2 scale;
-	Vector2 origin;
-	Vector angle;
+	static void recalcScale(Vector2* base_sc, Vector2 scale) {
+		base_sc->x *= scale.x;
+		base_sc->y *= scale.y;
+	}
+	Vector2 position = {0,0};
+	// scale in pixels! To set via a percentage, use Transform::recalcScale(&tr_t.scale, {amt_x, amt_y});
+	Vector2 scale = {0,0};
+	Vector2 origin = {0,0};
+	Vector angle = 0;
 };
+#endif

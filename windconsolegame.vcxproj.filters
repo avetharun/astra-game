@@ -19,6 +19,9 @@
     <Filter Include="lua">
       <UniqueIdentifier>{183fc9b5-7853-4651-945d-953f64c1d05a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="engine\renderer">
+      <UniqueIdentifier>{77d80903-9ba2-4b88-9f8a-f2bc09e543a9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="game.hpp">
@@ -37,9 +40,6 @@
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="physics.hpp">
-      <Filter>engine</Filter>
-    </ClInclude>
-    <ClInclude Include="renderer.hpp">
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="utils.hpp">
@@ -108,6 +108,18 @@
     <ClInclude Include="cwlib\cwabt.hpp">
       <Filter>engine\cwlib</Filter>
     </ClInclude>
+    <ClInclude Include="LUA_INCLUDE.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="GUIRenderer.h">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer.hpp">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="guiRendererDefs.hpp">
+      <Filter>engine\renderer</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
@@ -120,7 +132,10 @@
     <None Include="out\main.cwl">
       <Filter>world</Filter>
     </None>
-    <None Include="build\tra\test.cwl">
+    <None Include="out\test.cwl">
+      <Filter>world</Filter>
+    </None>
+    <None Include="build\tra\test.lua">
       <Filter>world</Filter>
     </None>
   </ItemGroup>

@@ -1,1 +1,2 @@
 #define d_typedef_func_ty(return_z, name, __VA_ARGS__) typedef return_z (*name)(##__VA_ARGS__);
+#define _nn ___nn_internal_concat(_, _1_nn_internal__3__, _)

@@ -1,4 +1,4 @@
-#pragma once
+
 #ifndef cwlib_cw_lib_hpp
 #define cwlib_cw_lib_hpp
 #define CWL_DEBUG

@@ -1,4 +1,4 @@
-#pragma once
+
 #ifndef cwlib_cwa_interpreter_hpp
 #define cwlib_cwa_interpreter_hpp
 
@@ -29,6 +29,8 @@ Asset file structure
 #include "../utils.hpp"
 #include <functional>
 #include "_cwincludes.h"
+#include "../lua.hpp"
+
 
 struct cwAsset {
 	struct cwAssetVersion {
@@ -36,9 +38,7 @@ struct cwAsset {
 		uint16_t max;
 	};
 	cwAssetVersion version;
-	uint32_t assetID;
-	uint64_t updateFID;
-	uint64_t startFID;
+	
 	uint32_t flags;
 };
 

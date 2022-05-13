@@ -1,4 +1,6 @@
-#pragma once
+
+#ifndef cwlib_cwabt_interpreter_hpp
+#define cwlib_cwabt_interpreter_hpp
 
 // type support
 #include <cereal/types/map.hpp>
@@ -60,9 +62,12 @@ int abt_geti(JSONREF j) {
 std::string abt_getstr(JSONREF j) {
 	return j.get<std::string>();
 }
-const char* abt_getchara(JSONREF j) {
+const char* abt__getchara(JSONREF j) {
 	return abt_getstr(j).c_str();
 }
 
 
 #undef JSONREF
+
+
+#endif	

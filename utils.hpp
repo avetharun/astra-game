@@ -32,14 +32,23 @@
  // Avetharun : 4-14-22 : added byte modification utilities
  // Avetharun : 4-15-22 : added beginswith function, and renamed readFileBytes to alib_file_read
  // Avetharun : 4-17-22 : added "copy sign" function
- // Avetharun : 4-27-22 : added json utilities & fixed #pragma once issue, causing things that must be declared seperately to not work.
+ // Avetharun : 4-27-22 : added json utilities & fixed  issue, causing things that must be declared seperately to not work.
  // Avetharun : 4-29-22 : modify the way function pointer types are created, now uses a macro. Formatted as follows:
       // d_typedef_func_ty(ret_val, ty_name, ty_arg_types_variadic)
       // Note: semicolon is NOT needed, as if it's put at the end, it will produce an intellisense warning. Apparently it's by design. Ignore it if it happens.
       // Original impl: https://github.com/avetharun/avetharun/blob/bf49a022c7021fb3200231722f7975f167e1cf9f/ave_libs.hpp#L308
+                       // Also added assert handling
 
 
-#define _CRT_SECURE_NO_WARNINGS
+#ifndef NDEBUG
+// Production builds should set NDEBUG=1
+#define NDEBUG false
+#endif
+
+#ifndef ALIB_DEBUG_BUILD
+#define ALIB_DEBUG_BUILD !NDEBUG
+#endif
+
 #if defined(ALIB_FORCE_BINARY) || (!defined(ALIB_NO_BINARY))
  // 
  //      Binary & bit manipulation utilities
@@ -379,12 +388,12 @@ int alib_digitsInNum(long n, int base = 10)
 // Get digits of [num], formatted as ASCII (by default, pass false to disable)
 // arr[0] is the amount of digits in the array
 char* alib_getDigitsOfNumber(int num, bool ascii = true) {
-    int amt_digits = alib_digitsInNum(num, 10);
+    int amt_digits = alib_digitsInNum(num, 10) + 1;
     if (amt_digits <= 0) {
         amt_digits = 1;
     }
-    char* digits = (char*)malloc(amt_digits + 1);
-    digits[0] = amt_digits;
+    char* digits = (char*)malloc(amt_digits);
+    *digits = amt_digits;
     int i = 1;
     while (num != 0)
     {
@@ -449,12 +458,9 @@ int alib_getchrpos(const char* src, char c, size_t len = 0)
     return -1;
 }
 // char array contains
-bool alib_chrcont(const char* src, const char* prefix) {
-    size_t src_len = strlen(src);
-    for (int i = 0; i < src_len; i++) {
-        if (strcmp(src + i, prefix)) {
-            return true;
-        }
+bool alib_costr(std::string src, const char* match) {
+    if (src.find(match) != std::string::npos) {
+        return true;
     }
     return false;
 }
@@ -507,6 +513,64 @@ void alib_set_byte(void* data, char byte) {
     reinterpret_cast<char*>(data)[0] = byte;
 }
 
+#ifdef _MSC_VER
+#define VSCPRINTF "native (symlinked)"
+#define vscprintf _vscprintf
+#endif
+
+#ifdef __GNUC__
+#define VSCPRINTF "implemented"
+int vscprintf(const char* format, va_list ap)
+{
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int retval = vsnprintf(NULL, 0, format, ap_copy);
+    va_end(ap_copy);
+    return retval;
+}
+#endif
+
+/*
+ * asprintf, vasprintf:
+ * MSVC does not implement these, thus we implement them here
+ * GNU-C-compatible compilers implement these with the same names, thus we
+ * don't have to do anything
+ */
+#ifdef _MSC_VER
+#define VASPRINTF "implemented"
+#define ASPRINTF "implemented"
+int vasprintf(char** strp, const char* format, va_list ap)
+{
+    int len = vscprintf(format, ap);
+    if (len == -1)
+        return -1;
+    char* str = (char*)malloc((size_t)len + 1);
+    if (!str)
+        return -1;
+    int retval = vsnprintf(str, len + 1, format, ap);
+    if (retval == -1) {
+        free(str);
+        return -1;
+    }
+    *strp = str;
+    return retval;
+}
+
+int asprintf(char** strp, const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    int retval = vasprintf(strp, format, ap);
+    va_end(ap);
+    return retval;
+}
+#endif
+
+#ifdef __GNUC__
+#define VASPRINTF "native"
+#define ASPRINTF "native"
+#endif
+
 
 size_t alib_2d_ar_pos(size_t pitch, size_t x, size_t y, size_t bytes_per_step = 4) {
     return y * pitch + x * bytes_per_step;
@@ -556,7 +620,8 @@ const char* alib_va_arg_parse(const char* fmt, va_list args) {
 const char* alib_strfmt(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
+    size_t bufsz = 0;
+    bufsz = snprintf(NULL, 0, fmt, args);
     const char* _buf = (const char*)malloc(bufsz);
     vsprintf((char*)_buf, fmt, args);
     va_end(args);
@@ -575,7 +640,13 @@ va_list alib_va_list_parse(char padding = 0, ...) {
 void alib_copy_signed(signed int a, signed int* b) {
     *b = (a < 0) ? -*b : (*b < 0) ? -*b : *b;
 }
-
+#include <codecvt>
+#include <locale>
+std::wstring convert_wstr(std::string str) {
+    std::wstring str2(str.length(), L' '); // Make room for characters
+    std::copy(str.begin(), str.end(), str2.begin());
+    return str2;
+}
 
 // Begin std::string specific utilities
 
@@ -611,7 +682,11 @@ void alib_strsplit(std::string& str, char delim, std::vector<std::string>& out)
 {
     size_t start;
     size_t end = 0;
-
+    // Doesn't contain 'delim', so return the base string itself.
+    if ((str.find_first_not_of(delim, end)) == std::string::npos) {
+        out.push_back(str);
+        return;
+    }
     while ((start = str.find_first_not_of(delim, end)) != std::string::npos)
     {
         end = str.find(delim, start);
@@ -630,16 +705,20 @@ void alib_split_quoted(std::string arr, std::vector<std::string>* out) {
 
 }
 
-const char* alib_str_hex(std::string s) {
+std::string alib_str_hex(std::string s) {
 
     std::stringstream s1;
     for (int i = 0; i < s.length(); i++) {
         s1 << std::hex << (int)s.at(i);
     }
 
-    return s1.str().c_str();
+    return s1.str();
 }
-
+std::string alib_int_hex(long l) {
+    std::stringstream stream;
+    stream << std::hex << l;
+    return std::string(stream.str());
+}
 
 #include <string>
 #include <algorithm>
@@ -660,8 +739,116 @@ std::string alib_upper(const char* s)
     return s2;
 }
 
+int alib_scale_percent(int first, int percent) {
+    if (percent == 100) { return first; }
+    if (percent < 100) {
+        return first / percent;
+    }
+    return first * percent;
+}
+#include <cmath>
+#define alib_max(a,b) (((a) > (b)) ? (a) : (b))
+#define alib_min(a,b) (((a) < (b)) ? (a) : (b))
+template<typename T> struct alib_is_shared_ptr : std::false_type {};
+template<typename T> struct alib_is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
+
+
+template <typename T>
+void alib_remove_any_of(std::vector<T> _v, T vy) {
+    for (int i = 0; i < _v.size(); i++) {
+        if (_v.at(i) == vy) {
+            _v.erase(_v.begin() + i);
+        }
+    }
+    _v.shrink_to_fit();
+}
+
+
+#include <any>
+#include <typeinfo>
+template <typename T>
+T& alib_get_if_any(std::any _ta) {
+    if (alib_streq(typeid(T).name(), _ta.type().name())) {
+        return std::any_cast<T>(_ta);
+    }
+    return _ta._Cast();
+}
+
+
 
 #endif // ALIB_NO_BYTE_UTILS
+
+#if defined(ALIB_FORCE_ASSERT) || (!defined(ALIB_NO_ASSERT))
+#include <assert.h>
+#include <stdio.h>
+#include <conio.h>
+#define alib_assert(condition, fmt, ...) if (condition) { fprintf(stderr, fmt, __VA_ARGS__); fprintf(stderr, "\nPress any key to exit.\n"); while (!_getch()) {} exit(-1); }
+#define alib_asserti(condition, fmt, ...) if (condition) { \
+    fprintf(stderr, fmt, __VA_ARGS__); fprintf(stderr, "\nIgnore? Y/N"); \
+    int k = _getch();\
+    if (tolower(k)== 'y') {} else if (tolower(k) == 'n') {\
+        exit(-1);\
+    } else {fprintf(stderr, "Not a valid input. Please type Y/N");}\
+}
+#if defined (_WIN32)
+#include <Windows.h>
+#define alib_assert_p(condition,fmt, ...) if( condition ){ MessageBox(0, convert_wstr(alib_strfmt(fmt, __VA_ARGS__)).c_str(), L"Assertion failed", MB_OK); exit(-1); }
+#define alib_assert_pi(condition, fmt, ...) if (condition) { \
+        int state = MessageBox(0, convert_wstr(alib_strfmt(fmt, __VA_ARGS__)).c_str(), L"Assertion failed. Ignore?", MB_YESNO); \
+        switch (state){\
+        case IDNO:\
+            exit(1);\
+            break;\
+        };\
+    }
+#endif
+#endif // ALIB_FORCE_ASSERT
+#include <vector>
+#include <map>
+template <typename T>
+void alib_invalidatev(std::vector<T> __v) {
+    for (int i = 0; i < __v.size(); i++) {
+        if (std::is_pointer<T>()) {
+            __v.at(i)->operator~();
+            continue;
+        }
+        __v.at(i).operator~();
+    }
+    __v.clear();
+}
+template <typename K = std::string, typename V>
+void alib_invalidatem(std::map<K, V> m) {
+    for (const auto& kv : m) {
+        if (std::is_pointer<V>()) {
+            (*kv.second).operator~();
+            continue;
+        }
+        else {
+            (*kv.second).operator~();
+        }
+    }
+    m.clear();
+}
+template <typename V_T, typename PREDICATE>
+void alib_remove_if(std::vector<V_T> _vec, PREDICATE _p) {
+    for (int i = 0; i < _vec.size(); i++) {
+        if (std::is_function<PREDICATE>()) {
+            if ((std::function)(_p)()) {
+                _vec.erase(_vec.begin() + i);
+            }
+        }
+        else {
+            if (_p) {
+                _vec.clear();
+            }
+        }
+    }
+}
+#include <chrono>
+#include <thread>
+#define alib_sleep_micros(micros) std::this_thread::sleep_for(std::chrono::microseconds(micros));
+#define alib_sleep_millis(millis) std::this_thread::sleep_for(std::chrono::milliseconds(millis));
+#define alib_sleep_second(second) std::this_thread::sleep_for(std::chrono::microseconds(second));
 
 #endif // __lib_aveth_utils_hpp
 
@@ -736,6 +923,15 @@ bool alib_j_streq(JSONREF j, std::string match) {
     if (src.size() < match.size()) {}
     return (src.compare(match) == 0);
 }
+bool alib_j_costr(JSONREF j, std::string match) {
+    if (j.is_array()) {
+        for (int i = 0; i < j.size(); i++) {
+            if (j[i].get<std::string>().compare(match.c_str()) == 0) { return true; };
+        }
+    }
+    // If j_ty = array : the following will always return false.
+    return j.contains(match);
+}
 bool alib_j_ieq(JSONREF j, int match) {
     return (j.get<int>() == match);
 }
@@ -745,7 +941,7 @@ bool alib_j_feq(JSONREF j, float match) {
 // If [j] contains keys formatted as "a<newline>b<newline>c"
 // Note: replace <newline> with \\n (unescaped due to comment)
 // (eg if the json element is {"a":{"b":{"c":"d"}}} it would return true)
-bool alib_j_contkeys(___alib__json j, std::string _s) {
+bool alib_j_cokeys(___alib__json j, std::string _s) {
     ___alib__json j_t = j;
     std::vector<std::string> s_keys;
     alib_strsplit(_s, '\n', s_keys);
@@ -762,7 +958,7 @@ bool alib_j_contkeys(___alib__json j, std::string _s) {
 
 }
 #undef JSONREF
-
+#undef _CRT_SECURE_NO_WARNINGS
 
 #endif
 

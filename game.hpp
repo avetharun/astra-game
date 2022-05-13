@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __cw_engine_game_handler_hpp
+#define __cw_engine_game_handler_hpp
 
 
 #define COUT_DEBUG
@@ -18,8 +19,8 @@ Window* window = Window::WindowInstance;
 #if !SDL_VERSION_ATLEAST(2,0,17)
 #error This game requires SDL 2.0.17+ because of the SDL_RenderGeometry() function
 #endif
-#include <luaaa.hpp>
 #include "asl.hpp"
+#include "lua.hpp"
 
 Sprite playerimg = Sprite("sprites/sprites.png");
 
@@ -46,20 +47,29 @@ SDL_Rect playerAnimFrames [32] = {
 	{ 143,45,		uvpw,uvph	}  // Facing right (walk 2)
 };
 float char_anim_offset;
-
+bool debug_draw_line_bounds = false;
+bool debug_draw_line_overlay = true;
 ABT playerdata;
 /* Player initializer function  */
+UI::TextElement fps_tx = UI::TextElement();
+UI::ImageElement _test_overlay = UI::ImageElement("sprites/sprites.png");
+ImGui::Colour _c = ImGui::Colour(32, 32, 255);
+const char* col = _c.tostring();
 Window::Initializer $un{
 	[]() {
-
-
+		_test_overlay.uv = {0,0,1,1};
+		
+		lu_initTime(&Win->time.DeltaTime);
 		alib_show_console();
+		if (NDEBUG) { alib_hide_console(); }
 		cwError::onError = [](const char* errv, uint32_t errs) {
-			if (errs == cwError::CW_MESSAGE) {
-				Win->cons.pushuf(errv);
+			if (errs == cwError::CW_NONE) {
+				Win->cons.pushf("%s\n", errv);
 				return;
 			}
-			Win->cons.pushf("%s|%s", cwError::wtoh(errs), errv);
+			else {
+				Win->cons.pushf("%s|%s\n", cwError::wtoh(errs), errv);
+			}
 		};
 
 
@@ -90,8 +100,6 @@ Window::Initializer $un{
 			playerCollider.rect_cs = *&playerimg.rect;
 
 
-			initDataLua(&playerimg);
-
 			/*
 			* Component data values:
 			* bit 0: can move
@@ -105,9 +113,12 @@ Window::Initializer $un{
 			* bit 14: walking?
 			* bit 15: noclip enabled?
 			*/
-			player.data = INT64_MAX;
 			
+			player.data = INT64_MAX;
 			setbitv(player.data, 15, 0);
+
+			/*
+			*/
 			Win->cons.commands.insert({ "addcond", [&](const char* condition_args) {
 				std::cout << condition_args << '\n';
 				std::vector<std::string> args = alib_split(condition_args, ' ');
@@ -127,6 +138,22 @@ Window::Initializer $un{
 					cwError::debug_enabled = state;
 				}
 			  } 
+			});
+			Win->cons.commands.insert({ "r_line_bounds", [&](const char* _args) {
+				std::vector<std::string> _argsv;
+				alib_split_quoted(_args, &_argsv);
+				if (_argsv.size() >= 1) {
+					debug_draw_line_bounds = atoi(_argsv.at(0).c_str());
+				}
+			  }
+			});
+			Win->cons.commands.insert({ "r_line_overlay", [&](const char* _args) {
+				std::vector<std::string> _argsv;
+				alib_split_quoted(_args, &_argsv);
+				if (_argsv.size() >= 1) {
+					debug_draw_line_overlay = atoi(_argsv.at(0).c_str());
+				}
+			  }
 			});
 			Win->cons.commands.insert({ "tp", [&](const char* _pos) {
 
@@ -153,8 +180,10 @@ Window::Initializer $un{
 					// Win->cons.pushf("Arg: %s at %zi", argv[i].c_str(), i);
 				}
 				if (argv.at(0) == "unload") {
-					if (Win->scene == nullptr) { return; }
-					Win->scene->Discard();
+					if (SUCCEEDED(Win->scene)) {
+						Win->scene->Discard();
+						Win->cons.pushuf("Unloaded.");
+					}
 				}
 				if (argv.at(0) == "load") {
 					playerdata.compile("data/pdata.cwl");
@@ -166,7 +195,7 @@ Window::Initializer $un{
 						argv.at(1).append(".cwl");
 					}
 					if (alib_file_exists(argv.at(1).c_str())) {
-						if (SUCCEEDED(Win->scene)) {
+						if (Win->scene != nullptr) {
 							Win->scene->Discard();
 						}
 						Window::WindowInstance->scene = new cwLayout(argv.at(1).c_str());
@@ -187,6 +216,8 @@ Window::Initializer $un{
 			  }
 			});
 			Win->cons.commands.insert({ "exec", [&](const char* arg) {
+				// Condition to return if nothing is passed into exec, or if it runs twice. Which it does...
+				if (std::string(arg).compare("") == 0) { return; }
 				int status = luaL_dostring(state, arg);
 				if (status) {
 					// since the error message includes the script which we're trying
@@ -195,6 +226,19 @@ Window::Initializer $un{
 					std::ostringstream errmsg;
 					int parseError1_pos = lua_gettop(state);
 					errmsg << "Errors parsing the following script:" << std::endl;
+					errmsg << arg << std::endl << std::endl;
+					errmsg << "Parser error when interpreting as an expression:" << std::endl;
+					errmsg << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
+					Win->cons.pushuf(errmsg.str().c_str());
+				}
+			} });
+			Win->cons.commands.insert({ "execf", [&](const char* arg) {
+				if (!alib_file_exists(arg)) { cwError::sstate(cwError::CW_ERROR); cwError::serrof("File %s doesn't exist.", arg); return; }
+				int status = luaL_dofile(state, arg);
+				if (status) {
+					std::ostringstream errmsg;
+					int parseError1_pos = lua_gettop(state);
+					errmsg << "Errors parsing the following file:" << std::endl;
 					errmsg << arg << std::endl << std::endl;
 					errmsg << "Parser error when interpreting as an expression:" << std::endl;
 					errmsg << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
@@ -224,7 +268,7 @@ Window::Initializer $un{
 						if (window->keyboard.GetKey(Input::K_a)) {
 							setbitv(player.data, 3, 1);
 							playerimg.uv = playerAnimFrames[2 * 4 + 0];
-							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 180, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
+							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 180, 25, COL_SOLID) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[2 * 4 + (int)char_anim_offset];
 								playerimg.transform.position.x -= static_cast<int>(speed * Time.DeltaTime);
 							}
@@ -232,7 +276,7 @@ Window::Initializer $un{
 						if (window->keyboard.GetKey(Input::K_d)) {
 							setbitv(player.data, 3, 0);
 							playerimg.uv = playerAnimFrames[3 * 4 + 0];
-							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 0, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
+							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 0, 25, COL_SOLID) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[3 * 4 + (int)char_anim_offset];
 								// We add 2 for... well a reason I have no idea about.
 								playerimg.transform.position.x += static_cast<int>(speed * Time.DeltaTime);
@@ -243,7 +287,7 @@ Window::Initializer $un{
 						if (window->keyboard.GetKey(Input::K_w)) {
 							setbitv(player.data, 2, 0);
 							playerimg.uv = playerAnimFrames[1 * 4 + 0];
-							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 270, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
+							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 270, 25, COL_SOLID) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[1 * 4 + (int)char_anim_offset];
 								playerimg.transform.position.y -= static_cast<int>(speed * Time.DeltaTime);
 							}
@@ -251,7 +295,7 @@ Window::Initializer $un{
 						if (window->keyboard.GetKey(Input::K_s)) {
 							setbitv(player.data, 2, 1);
 							playerimg.uv = playerAnimFrames[0 + 0];
-							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 45, 90, 25, COL_SOLID, 35) || getbitv(player.data, 15)) {
+							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 45, 90, 25, COL_SOLID) || getbitv(player.data, 15)) {
 								playerimg.uv = playerAnimFrames[0 + (int)char_anim_offset];
 								playerimg.transform.position.y += static_cast<int>(speed * Time.DeltaTime);
 							}
@@ -341,7 +385,7 @@ Window::Initializer _nn{
 		*/
 		Win->Start = []() {
 			Camera::GetInstance()->SetTarget(&playerimg.transform.position); 
-
+			initDataLua(&playerimg, Win->SDL_REND);
 		};
 		Win->OnFocus = []() {};
 		Win->OnFocusLost = []() {};
@@ -371,19 +415,24 @@ Window::Initializer _nn{
 				flipbitv(Win->data, 1);
 			}
 			// Toggle debug window
-			if (Keyboard.GetKeyDown(Input::K_GRAVE)) {
+			if (Keyboard.GetKeyDown(Input::K_GRAVE) && Win->debug) {
 				flipbitv(Win->data, 12);
 			}
 			// Toggle drawing lines
 			if (Keyboard.GetKeyDown(Input::K_F1)) {
 				flipbitv(Win->data, 2);
 			}
+			if (Keyboard.GetKeyDown(Input::K_F2)) {
+				flipbitv(player.data, 1);
+			}
 		};
-		Win->PostPreRender = [](){
+		Win->PostPreRender = [&](){
+			fps_tx.textfmt("%s%.2f", col, Window::WindowInstance->time.fps);
 			if (!getbitv(Win->data, 0)) {
 				ImGui::SetWindowFocus(NULL);
 				Win->debug_window_open = false;
 			}
+			fps_tx.enabled = Win->debug;
 			if (Win->debug) {
 				setbitv(Win->data, 0, 1);
 				// Draw debug lines?
@@ -395,22 +444,40 @@ Window::Initializer _nn{
 						SDL_RenderFillRect(Win->SDL_REND, c->rect_cs);
 					}
 					for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
+						alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
 						for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
-							MeshLine line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
-							Vector2 s = line.start + -*Camera::GetInstance()->m_target;
-							Vector2 e = line.end + -*Camera::GetInstance()->m_target;
-							SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 255);
-							SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
+							MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
+							Vector2 s = line->start + -*Camera::GetInstance()->m_target;
+							Vector2 e = line->end + -*Camera::GetInstance()->m_target;
+							if (debug_draw_line_overlay) {
+								SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 64);
+								SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
+							}
+							if (debug_draw_line_bounds) {
+								SDL_Rect c_lr = MeshLine::bounding_box({ s,e });
+								SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 128, 128, 32);
+								SDL_RenderDrawRect(Win->SDL_REND, &c_lr);
+							}
 						}
 					}
 				}
-
-
 			}
 			else {
 				setbitv(Win->data, 0, 0);
 			}
 		};
+		if (alib_file_exists("data/main.cwl")) {
+			if (SUCCEEDED(Win->scene)) {
+				Win->scene->Discard();
+			}
+			Window::WindowInstance->scene = new cwLayout("data/main.cwl");
+		}
+		if (alib_file_exists("main.cwl")) {
+			if (SUCCEEDED(Win->scene)) {
+				Win->scene->Discard();
+			}
+			Window::WindowInstance->scene = new cwLayout("main.cwl");
+		}
 	}
 };
 
@@ -420,3 +487,7 @@ Window::Initializer _nn{
 
 
 
+
+
+
+#endif

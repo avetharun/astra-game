@@ -1,6 +1,8 @@
 #if !defined(RENDERER_HPP)
 #define RENDERER_HPP
+#define STBI_ONLY_PNG
 #define STB_IMAGE_IMPLEMENTATION
+
 #include "stb_image.h"
 #include <functional>
 #include <iostream>
@@ -27,13 +29,27 @@
 
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
+void ImplLoadGLTextureFromSDL(SDL_Surface* surf, GLuint* out_texture_id, int* out_width, int* out_height) {
+	glGenTextures(1, out_texture_id);
+	glBindTexture(GL_TEXTURE_2D, *out_texture_id);
 
+	int Mode = GL_RGB;
+	*out_width = surf->w;
+	*out_height= surf->h;
+	if (surf->format->BytesPerPixel == 4) {
+		Mode = GL_RGBA;
+	}
+	glTexImage2D(GL_TEXTURE_2D, 0, Mode, surf->w, surf->h, 0, Mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+}
 // Simple helper function to load an image into a OpenGL texture with common settings
 bool ImplLoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
 {
 	// Load from file
 	int image_width = 0;
 	int image_height = 0;
+
 	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
 	if (image_data == NULL)
 		return false;
@@ -355,8 +371,8 @@ struct Sprite{
 				(int)Camera::GetInstance()->m_Viewport.x,
 				(int)Camera::GetInstance()->m_Viewport.y
 			};
-			SDL_SetRenderDrawColor(SDL_REND_RHPP, 128, 255, 255, 255);
-			SDL_RenderDrawRect(SDL_REND_RHPP, &bounds);
+			//SDL_SetRenderDrawColor(SDL_REND_RHPP, 128, 255, 255, 255);
+			//SDL_RenderDrawRect(SDL_REND_RHPP, &bounds);
 			if (!Raycast2D::RectIntersects(rect, &bounds)) {
 				isRendering = false;
 #ifdef CW_EXTRA_DEBUG_INFO

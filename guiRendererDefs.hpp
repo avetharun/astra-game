@@ -10,22 +10,27 @@ namespace UI {
 	{
 		_element_arr.shrink_to_fit();
 		for (ui_elem_offset = 0; ui_elem_offset < _element_arr.size(); ui_elem_offset++) {
-			std::any tx_elem = _element_arr.at(ui_elem_offset);
-			printf("%s\n", tx_elem.type().name());
-			if (alib_costr(tx_elem.type().name(), "UI::TextElement *")) {
-				TextElement* _e = std::any_cast<TextElement*>(tx_elem);
+			std::any* tx_elem = _element_arr.at(ui_elem_offset);
+			if (!tx_elem) {
+				_element_arr.erase(_element_arr.begin() + ui_elem_offset);
+				// Will shrink vector next frame.
+				continue;
+			}
+			//printf("%s\n", tx_elem.type().name());
+			if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
+				TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
 				if (!_e->enabled) { continue; }
 				_e->Render();
 				continue;
 			}
-			if (alib_costr(tx_elem.type().name(), "UI::ButtonElement *")) {
-				ButtonElement* _e = std::any_cast<ButtonElement*>(tx_elem);
+			if (alib_costr(tx_elem->type().name(), "UI::ButtonElement *")) {
+				ButtonElement* _e = std::any_cast<ButtonElement*>(*tx_elem);
 				if (!_e->enabled) { continue; }
 				_e->Render();
 				continue;
 			}
-			if (alib_costr(tx_elem.type().name(), "UI::ImageElement *")) {
-				ImageElement* _e = std::any_cast<ImageElement*>(tx_elem);
+			if (alib_costr(tx_elem->type().name(), "UI::ImageElement *")) {
+				ImageElement* _e = std::any_cast<ImageElement*>(*tx_elem);
 				if (!_e->enabled) { continue; }
 				_e->Render();
 				continue;
@@ -42,16 +47,16 @@ namespace UI {
 		ImGui::End();
 	}
 	TextElement::TextElement() {
-		_element_arr.push_back(this);
+		_element_arr.push_back(new std::any(this));
 	}
 	TextElement::TextElement(std::string _txt) {
-		_element_arr.push_back(this);
+		_element_arr.push_back(new std::any(this));
 		this->text = _txt;
 	}
 
-	ButtonElement::ButtonElement() { _element_arr.push_back(this); }
+	ButtonElement::ButtonElement() { _element_arr.push_back(new std::any(this)); }
 	ButtonElement::ButtonElement(std::string _txt, ButtonElementFlags _flags = {}) {
-		_element_arr.push_back(this);
+		_element_arr.push_back(new std::any(this));
 		this->text = _txt;
 		this->buttonFlags = _flags;
 	}

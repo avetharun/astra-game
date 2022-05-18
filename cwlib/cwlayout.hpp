@@ -27,43 +27,19 @@ struct cwLayout : private ABT {
 		}
 		cwlayoutfile.clear();
 	}
-
 private:
-
-	// extremely slow at the moment. Only use once when loading!
-	std::array<int, 2> parse_wh_pair(json stub, Sprite* _s = nullptr) {
-		int w = 0;
-		int h = 0;
-		std::string w_str = alib_j_getstr(stub["w"]);
-		std::string h_str = alib_j_getstr(stub["h"]);
-		if (stub["w"].is_string() && alib_endswith(w_str.c_str(), "%") && _s != nullptr) {
-			if (!w_str.empty()) {
-				w_str.pop_back();
-			}
-			w = alib_scale_percent(_s->surf->w, atoi(w_str.c_str()));
-		}
-		else {
-			w = alib_j_geti(stub["w"]);
-		}
-		if (stub["h"].is_string() && alib_endswith(h_str.c_str(), "%") && _s != nullptr) {
-			if (!h_str.empty()) {
-				h_str.pop_back();
-			}
-			h = alib_scale_percent(_s->surf->h, atoi(h_str.c_str()));
-		}
-		else {
-			w = alib_j_geti(stub["h"]);
-		}
-		return {w,h};
+	void parse_wh(Sprite* _s, std::string w_in, std::string h_in, int* w_out, int* h_out) {
+		*w_out = alib_percents(_s->surf->w, w_in);
+		*h_out = alib_percents(_s->surf->h, h_in);
 	}
 	Vector2 parse_vector2(json stub) {
 		return { alib_j_geti(stub["x"]),alib_j_geti(stub["y"])};
 	}
 	std::map<std::string, json> template_assets;
-	// Needed to ::discard the sprite when unused by the scene.
 	std::map<std::string, Sprite*> sprite_assets;
 	std::map<std::string, UI::ImageElement*> ui_img_elem_assets;
 	std::map<std::string, UI::TextElement*> ui_txt_elem_assets;
+
 	Sprite* parse_scene_sprite(json& stub) {
 		if (alib_j_cokeys(stub, "asset_data\nfilename")) {
 			Sprite* _s = new Sprite(alib_j_getstr(stub["asset_data"]["filename"]).c_str());
@@ -71,26 +47,27 @@ private:
 			json stub_ad = stub["asset_data"];
 			json stub_tr = stub["asset_data"]["transform"];
 			int ox, oy;
+			int x = 0, y = 0, w, h;
+			
+			if (stub_tr.at("w").is_string()) { w = alib_percents(_s->surf->w, stub_tr.at("w").get<std::string>()); } else {w = stub_tr.at("w").get<int>();}
+			if (stub_tr.at("h").is_string()) { h = alib_percents(_s->surf->h, stub_tr.at("h").get<std::string>()); } else {h = stub_tr.at("h").get<int>();}
 			if (!alib_j_cokeys(stub_ad, "origin")) {
-				ox = 0;
-				oy = 0;
+				ox = (int)(w * 0.5);
+				oy = (int)(h * 0.5);
 			}
 			else {
 				ox = stub_tr["origin"]["x"];
 				oy = stub_tr["origin"]["y"];
 			}
-			std::array<int, 2> wh_pair = parse_wh_pair(stub_tr, _s);
-			int w = wh_pair.at(0);
-			int h = wh_pair.at(1);
-			int x = alib_j_geti(stub_tr["x"]);
-			int y = alib_j_geti(stub_tr["y"]);
-			printf("Created sprite with %d, %d at %d, %d using origin %d, %d", w, h, x, y, ox, oy);
-			_s->SetTransform({
-				{ x, y}, // pos
-				{ w, h}, // scale
-				{ ox, oy}, // origin
-				0   // angle
-				});
+			if ((stub_tr.contains("x")) && stub_tr.at("x").is_number_integer()) { x = stub_tr.at("x").get<int>(); }
+			if ((stub_tr.contains("y")) && stub_tr.at("y").is_number_integer()) { y = stub_tr.at("y").get<int>(); }
+			printf("CW: Created world sprite with %d, %d at %d, %d using origin %d, %d\n", w, h, x, y, ox, oy);
+			_s->transform = {
+				{x,y},
+				{w,h},
+				{ox, oy},
+				0
+			};
 			if (alib_j_cokeys(stub_ad, "layer")) {
 				if (alib_j_streq(stub_ad["layer"], "top")) {
 					_s->layer = INT32_MAX;
@@ -102,7 +79,8 @@ private:
 					_s->layer = alib_j_geti(stub_ad["layer"]);
 				}
 			}
-			sprite_assets.insert({ stub["id"], _s});
+			
+			sprite_assets.insert({ stub.at("id"), (_s) });
 			return _s;
 		}
 		return nullptr;
@@ -115,33 +93,41 @@ private:
 				json stub = this->data["layout"][i];
 				if (stub.contains("schema")) {
 					if (alib_j_costr(stub["schema"], "image") && !alib_j_costr(stub["schema"], "animated") && !alib_j_costr(stub["schema"], "ui")) {
+						printf("a\n");
 						parse_scene_sprite(stub);
 						continue;
 					}
 					if (alib_j_costr(stub["schema"], "ui")) {
 						if (alib_j_costr(stub["schema"], "image")) {
-							printf("\nloading ui image\n");
 							UI::ImageElement* _imgel = new UI::ImageElement(alib_j_getstr(stub["asset_data"]["filename"]).c_str());
-							ui_img_elem_assets.insert({stub["id"], _imgel });
+							ui_img_elem_assets.insert({stub["id"], _imgel});
+							if (alib_j_cokeys(stub["asset_data"], "transform")) {
+								json tstub = stub["asset_data"]["transform"];
+								if (tstub.contains("x")) { _imgel->transform.position.x = tstub["x"].get<int>(); }
+								if (tstub.contains("y")) { _imgel->transform.position.x = tstub["y"].get<int>(); }
+								if (tstub.contains("w")) { _imgel->transform.scale.x = tstub["w"].get<int>(); }
+								if (tstub.contains("h")) { _imgel->transform.scale.y = tstub["h"].get<int>(); }
+							}
 							if (alib_j_cokeys(stub["asset_data"], "uv")) {
 								if (stub["asset_data"]["uv"].is_array()) {
 									json uvstub = stub["asset_data"]["uv"];
-									_imgel->uv.x = uvstub[0][0];
-									_imgel->uv.y = uvstub[0][1];
-									_imgel->uv.w = uvstub[1][0];
-									_imgel->uv.h = uvstub[1][1];
+									_imgel->uv.x = uvstub[0][0].get<int>();
+									_imgel->uv.y = uvstub[0][1].get<int>();
+									_imgel->uv.w = uvstub[1][0].get<int>();
+									_imgel->uv.h = uvstub[1][1].get<int>();
 								}
 							}
 							continue;
 						}
 						if (alib_j_costr(stub["schema"], "text")) {
 							printf("Creating UI text\n");
-							UI::TextElement _t = UI::TextElement();
-							_t.text = stub["asset_data"]["text"].get<std::string>();
-							_t.enabled = 1;
+							UI::TextElement* _t = new UI::TextElement();
+							_t->text = stub["asset_data"]["text"].get<std::string>();
+							_t->enabled = 1;
 							if (alib_j_cokeys(stub["asset_data"], "pos")) {
-								_t.pos = parse_vector2(stub["asset_data"]["pos"]);
+								_t->pos = parse_vector2(stub["asset_data"]["pos"]);
 							}
+							ui_txt_elem_assets.insert({ stub.at("id"), _t});
 							continue;
 						}
 					}
@@ -160,8 +146,15 @@ private:
 public:
 	void Discard() {
 		this->invalidate();
-		alib_invalidatem(sprite_assets);
-		alib_invalidatem(ui_img_elem_assets);
+
+		for (const auto& kv : sprite_assets) {
+			alib_remove_any_of<Sprite*>(Sprite::_mglobalspritearr, kv.second);
+		}
+		for (const auto& kv : ui_img_elem_assets) {
+			delete kv.second;
+		}
+		sprite_assets.clear();
+		ui_img_elem_assets.clear();
 		this->operator~();
 	}
 	void Save() {

@@ -98,7 +98,6 @@ struct MeshLine {
 struct MeshCollider2d {
 	bool isCWLScriptable = false;
 	std::function< void(MeshLine*) > OnColliderHit = [](MeshLine* other) {};
-	LuaSignal<MeshLine*> lua_colhit;
 
 	static size_t lu_gsz() { return _mGlobalColArr.size(); }
 	static std::string dump_debug() {
@@ -111,15 +110,9 @@ Memory allocated: %zi bytes
 	std::vector<MeshLine*>* lu_getLines() {
 		return &lines;
 	}
-	void setCallback(LuaSignal<MeshLine*> callb) {
-		this->lua_colhit = callb;
-	}
 	void c_collider_hit(MeshLine* o) {
-		if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
+		//if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
 		OnColliderHit(o);
-	}
-	void c_collider_setcallback(std::function< void(MeshLine*) > calb) {
-		lua_colhit.setCallback(calb);
 	}
 	std::vector<MeshLine*> lines;
 	static std::vector<MeshCollider2d*> _mGlobalColArr;
@@ -197,10 +190,6 @@ Memory allocated: %zi bytes
 	}
 
 	std::function< void(RectCollider2d*) > OnColliderHit = [](RectCollider2d* other) {};
-	LuaSignal<RectCollider2d*> lua_colhit;
-	void setCallback(LuaSignal<RectCollider2d*> callb) {
-		this->lua_colhit = callb;
-	}
 
 	static RectCollider2d* lu_new_fromr(VectorRect r, int __layer) {
 		RectCollider2d* r_re = new RectCollider2d();
@@ -220,11 +209,8 @@ Memory allocated: %zi bytes
 	}
 
 	void c_collider_hit(RectCollider2d* o) {
-		if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
+		//if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
 		OnColliderHit(o);
-	}
-	void c_collider_setcallback(std::function< void(RectCollider2d*) > calb) {
-		lua_colhit.setCallback(calb);
 	}
 
 	static std::vector<RectCollider2d*> _mGlobalColArr;

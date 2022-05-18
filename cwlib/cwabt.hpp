@@ -47,6 +47,7 @@ struct ABT {
 		return data[k];
 	}
 	void invalidate() {
+		if (data.type() == json::value_t::null) { return; }
 		data.clear();
 	}
 	void decompile(const char* filen) {

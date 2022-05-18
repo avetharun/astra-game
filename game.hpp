@@ -27,24 +27,11 @@ Sprite playerimg = Sprite("sprites/sprites.png");
 RectCollider2d playerCollider = RectCollider2d(playerimg.rect, COL_PLAYER);
 Window::Component player;
 const int uvpw = 24;
-const int uvph = 42;
-SDL_Rect playerAnimFrames [32] = {
-	{ 16,1,			uvpw,uvph   }, // Facing camera
-	{ 42,1,			uvpw,uvph   }, // Facing camera (walk 1)
-	{ 16,1,			uvpw,uvph   }, // Facing camera (walk neutral)
-	{ 66,1,			uvpw,uvph   }, // Facing camera (walk 2)
-	{ 165,1,		uvpw,uvph   }, // Facing away 
-	{ 191,1,		uvpw,uvph   }, // Facing away (walk 1)
-	{ 165,1,		uvpw,uvph   }, // Facing away (walk neutral)
-	{ 216,1,		uvpw,uvph	}, // Facing away (walk 2)
-	{ 92,1,			uvpw,uvph   }, // Facing left
-	{ 117,1,		uvpw,uvph	}, // Facing left (walk 1)
-	{ 92,1,			uvpw,uvph   }, // Facing left (walk neutral)
-	{ 141,1,		uvpw,uvph	}, // Facing left (walk 2)
-	{ 92,45,	    uvpw,uvph   }, // Facing right
-	{ 119,45,		uvpw,uvph	}, // Facing right (walk 1)
-	{ 92,45,	    uvpw,uvph   }, // Facing right (walk neutral)
-	{ 143,45,		uvpw,uvph	}  // Facing right (walk 2)
+const int uvph = 32;
+const int uvpsy = 347 + uvpw * 2;
+const int uvpsx = 0;
+SDL_Rect playerAnimFrames [1] = {
+	{uvpsx,uvpsy,uvpw,uvph}
 };
 float char_anim_offset;
 bool debug_draw_line_bounds = false;
@@ -52,14 +39,13 @@ bool debug_draw_line_overlay = true;
 ABT playerdata;
 /* Player initializer function  */
 UI::TextElement fps_tx = UI::TextElement();
-UI::ImageElement _test_overlay = UI::ImageElement("sprites/sprites.png");
+// which seems to be caused by this ^
 ImGui::Colour _c = ImGui::Colour(32, 32, 255);
 const char* col = _c.tostring();
 Window::Initializer $un{
 	[]() {
-		_test_overlay.uv = {0,0,1,1};
-		
-		lu_initTime(&Win->time.DeltaTime);
+		alib_assert_p(!&__lu_component_impl, "LUA Component Manager not initialized, unable to run!");
+		Window::WindowInstance->AddComponent(&__lu_component_impl);
 		alib_show_console();
 		if (NDEBUG) { alib_hide_console(); }
 		cwError::onError = [](const char* errv, uint32_t errs) {
@@ -90,7 +76,7 @@ Window::Initializer $un{
 		player.Start = [](){
 			playerimg.transform.position = Vector2(0,0);
 			playerimg.layer = 128;
-			playerimg.transform.scale = { uvpw * 2,uvph * 2 };
+			playerimg.transform.scale = { uvpw * 3,uvph * 3 };
 			playerimg.uv = playerAnimFrames[0];
 			playerimg.lockCamera();
 			playerimg.enabled = false;
@@ -267,37 +253,37 @@ Window::Initializer $un{
 					if (!( window->keyboard.GetKey(Input::K_d) && window->keyboard.GetKey(Input::K_a) )) {
 						if (window->keyboard.GetKey(Input::K_a)) {
 							setbitv(player.data, 3, 1);
-							playerimg.uv = playerAnimFrames[2 * 4 + 0];
+							//playerimg.uv = playerAnimFrames[2 * 4 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 180, 25, COL_SOLID) || getbitv(player.data, 15)) {
-								playerimg.uv = playerAnimFrames[2 * 4 + (int)char_anim_offset];
-								playerimg.transform.position.x -= static_cast<int>(speed * Time.DeltaTime);
+								//playerimg.uv = playerAnimFrames[2 * 4 + (int)char_anim_offset];
+								playerimg.transform.position.x -= static_cast<int>(speed * Time::DeltaTime);
 							}
 						}
 						if (window->keyboard.GetKey(Input::K_d)) {
 							setbitv(player.data, 3, 0);
-							playerimg.uv = playerAnimFrames[3 * 4 + 0];
+							//playerimg.uv = playerAnimFrames[3 * 4 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 0, 25, COL_SOLID) || getbitv(player.data, 15)) {
-								playerimg.uv = playerAnimFrames[3 * 4 + (int)char_anim_offset];
+								//playerimg.uv = playerAnimFrames[3 * 4 + (int)char_anim_offset];
 								// We add 2 for... well a reason I have no idea about.
-								playerimg.transform.position.x += static_cast<int>(speed * Time.DeltaTime);
+								playerimg.transform.position.x += static_cast<int>(speed * Time::DeltaTime);
 							}
 						}
 					}
 					if (!(window->keyboard.GetKey(Input::K_s) && window->keyboard.GetKey(Input::K_w))) {
 						if (window->keyboard.GetKey(Input::K_w)) {
 							setbitv(player.data, 2, 0);
-							playerimg.uv = playerAnimFrames[1 * 4 + 0];
+							//playerimg.uv = playerAnimFrames[1 * 4 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 40, 270, 25, COL_SOLID) || getbitv(player.data, 15)) {
-								playerimg.uv = playerAnimFrames[1 * 4 + (int)char_anim_offset];
-								playerimg.transform.position.y -= static_cast<int>(speed * Time.DeltaTime);
+								//playerimg.uv = playerAnimFrames[1 * 4 + (int)char_anim_offset];
+								playerimg.transform.position.y -= static_cast<int>(speed * Time::DeltaTime);
 							}
 						}
 						if (window->keyboard.GetKey(Input::K_s)) {
 							setbitv(player.data, 2, 1);
-							playerimg.uv = playerAnimFrames[0 + 0];
+							//playerimg.uv = playerAnimFrames[0 + 0];
 							if (!Raycast.TestCone(playerimg.center_position + Vector2(0, 16), 45, 90, 25, COL_SOLID) || getbitv(player.data, 15)) {
-								playerimg.uv = playerAnimFrames[0 + (int)char_anim_offset];
-								playerimg.transform.position.y += static_cast<int>(speed * Time.DeltaTime);
+								//playerimg.uv = playerAnimFrames[0 + (int)char_anim_offset];
+								playerimg.transform.position.y += static_cast<int>(speed * Time::DeltaTime);
 							}
 						}
 					}
@@ -326,21 +312,22 @@ Window::Initializer $un{
 			}
 			playerimg.enabled = getbitv(player.data, 1);
 
-			if ((
-				!Keyboard.GetKey(Input::K_s) &&
-				!Keyboard.GetKey(Input::K_w) &&
-				!Keyboard.GetKey(Input::K_a) &&
-				!Keyboard.GetKey(Input::K_d)
-				))
-			{
-				// No movement keys pressed, reset animation offset.
-				char_anim_offset = 0;
-			}
-			else {
-				char_anim_offset += (Time.DeltaTime / 3.75f) * speed / 7;
-				if (char_anim_offset > 4) { char_anim_offset = 0; }
-			}
-
+///			if ((
+///				!Keyboard.GetKey(Input::K_s) &&
+///				!Keyboard.GetKey(Input::K_w) &&
+///				!Keyboard.GetKey(Input::K_a) &&
+///				!Keyboard.GetKey(Input::K_d)
+///				))
+///			{
+///				// No movement keys pressed, reset animation offset.
+///				char_anim_offset = 0;
+///			}
+///			else {
+///				char_anim_offset += (Time::DeltaTime / 3.75f) * speed / 7;
+///				if (char_anim_offset > 4) { char_anim_offset = 0; }
+///			}
+///
+			char_anim_offset = 0;
 
 			// end of player update script
 		};

@@ -19,22 +19,44 @@ void initLUA(lua_State* state_) {
 	
 }
 
-template <typename... A>
-class LuaSignal
-{
-private:
-	std::function<void(A...)> _callback;
-public:
-	LuaSignal() {}
-	void setCallback(std::function<void(A...)> c) { 
-		_callback = c;
-	}
-	void execute(A... args) { _callback(args...); }
-	LuaSignal operator = (std::function<void(A...)> _c) {
-		this->_callback = _c;
-		return *this;
-	}
+struct Time {
+	float TimeSinceStart = 0;
+	static double DeltaTime;
+	static double DeltaTimeUnscaled;
+	static double fps;
+	static double DeltaTimeScale;
+	struct Timer {
+	private:
+		std::chrono::steady_clock::time_point _start;
+		std::chrono::steady_clock::time_point _end;
+	public:
+		double elapsed;
+		void Start() {
+			_start = std::chrono::high_resolution_clock::now();
+		}
+		void End() {
+			_end = std::chrono::high_resolution_clock::now();
+			elapsed = (double)(_end.time_since_epoch().count() - _start.time_since_epoch().count());
+		}
+	};
 };
+double Time::DeltaTimeScale = 1.0;
+double Time::DeltaTimeUnscaled = 0.0;
+double Time::DeltaTime = 0.0;
+double Time::fps = 0.0f;
+struct luafunc {
+	luabridge::LuaRef __func_impl = 0;
+	luafunc() {}
+	luabridge::LuaRef operator ()(luabridge::detail::ArgList<luabridge::LuaRef, 0> _args) {
+		if (__func_impl.isFunction()) { __func_impl(_args); }
+	}
+	luafunc operator =(luabridge::LuaRef _func_impl_flua) { __func_impl = _func_impl_flua; }
+};
+struct LuaComponentImpl { 
+
+
+};
+
 
 #define __asl_define_inputmodu(name, key) InputModu.addConstant(#name, key)
 void assignInputData(auto InputModu) {

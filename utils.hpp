@@ -44,7 +44,16 @@
 // Production builds should set NDEBUG=1
 #define NDEBUG false
 #endif
-
+bool alib_can_reach_mem(void* ptr) {
+    __try {
+        char prefix = *(((char*)ptr)); //Get the first byte. If this doesn't cause an error, then we can reach this.
+        return true;
+    }
+    __except (true) { //Catch all unique exceptions (Windows exceptions) 
+        return false; //Can't reach this memory
+    }
+}
+#define alib_template_ty_TY_A_B template <typename A, typename B>
 #ifndef ALIB_DEBUG_BUILD
 #define ALIB_DEBUG_BUILD !NDEBUG
 #endif
@@ -58,7 +67,8 @@
 
  /* Helper macros. Unless you know what you're doing, don't run these. */
 
- // Binary decoding to unsigned long v
+// Sourced from https://bytes.com/topic/c/answers/219656-literal-binary
+// Binary decoding to unsigned long v
 #define HEX__(n) 0x##n##LU
 #define B8__(x) ((x&0x0000000FLU)?1:0) \
 +((x&0x000000F0LU)?2:0) \
@@ -68,9 +78,6 @@
 +((x&0x00F00000LU)?32:0) \
 +((x&0x0F000000LU)?64:0) \
 +((x&0xF0000000LU)?128:0)
-// is this nonsense to anyone else? haha... hah.. heh....... help.
-// mf c++ magic heh
-
 // Binary encoding into hex (internal+user-runnable)
 #define B8(d) ((unsigned char)B8__(HEX__(d)))
 #define B16(dmsb,dlsb) (((unsigned short)B8(dmsb)<<8) \
@@ -138,6 +145,12 @@
 + ((unsigned long)B8(db2)<<16) \
 + ((unsigned long)B8(db3)<<8) \
 + B8(dlsb))
+// Convert 64 bits (Each byte is seperated!) into an unsigned long long
+#define Binary64(dmsb,db2,db3,db4,db5,db6,db7,dlsb) \
+(\
+	((unsigned long long int)B32(dmsb,db2,db3,db4)<<32  ) \
++	((unsigned long long int)B32(db5,db6,db7,dlsb)	   ) \
+)
 // Todo: Binary64 to T<long long>
 
 /**
@@ -739,13 +752,18 @@ std::string alib_upper(const char* s)
     return s2;
 }
 
-int alib_scale_percent(int first, int percent) {
-    if (percent == 100) { return first; }
-    if (percent < 100) {
-        return first / percent;
-    }
-    return first * percent;
+int alib_percent(long double num, double percent) {
+    long double _n_d100 = (num / 100);
+    return lroundl( _n_d100 * percent);
 }
+
+
+int alib_percents(int base, std::string percent_str) {
+    if ((alib_endswith(percent_str.c_str(), "%"))) percent_str.erase(percent_str.end());
+    int percent = atoi(percent_str.c_str());
+    return alib_percent(base, percent);
+}
+
 #include <cmath>
 #define alib_max(a,b) (((a) > (b)) ? (a) : (b))
 #define alib_min(a,b) (((a) < (b)) ? (a) : (b))
@@ -808,39 +826,22 @@ T& alib_get_if_any(std::any _ta) {
 template <typename T>
 void alib_invalidatev(std::vector<T> __v) {
     for (int i = 0; i < __v.size(); i++) {
-        if (std::is_pointer<T>()) {
-            __v.at(i)->operator~();
-            continue;
-        }
-        __v.at(i).operator~();
+        delete &__v.at(i);
     }
     __v.clear();
 }
 template <typename K = std::string, typename V>
 void alib_invalidatem(std::map<K, V> m) {
     for (const auto& kv : m) {
-        if (std::is_pointer<V>()) {
-            (*kv.second).operator~();
-            continue;
-        }
-        else {
-            (*kv.second).operator~();
-        }
+        delete kv.second;
     }
     m.clear();
 }
-template <typename V_T, typename PREDICATE>
-void alib_remove_if(std::vector<V_T> _vec, PREDICATE _p) {
+template <typename V_T>
+void alib_remove_if(std::vector<V_T> _vec, std::function<bool(V_T)> _p) {
     for (int i = 0; i < _vec.size(); i++) {
-        if (std::is_function<PREDICATE>()) {
-            if ((std::function)(_p)()) {
-                _vec.erase(_vec.begin() + i);
-            }
-        }
-        else {
-            if (_p) {
-                _vec.clear();
-            }
+        if (_p(_vec.at(i))) {
+            _vec.erase(_vec.begin() + i);
         }
     }
 }
@@ -848,7 +849,7 @@ void alib_remove_if(std::vector<V_T> _vec, PREDICATE _p) {
 #include <thread>
 #define alib_sleep_micros(micros) std::this_thread::sleep_for(std::chrono::microseconds(micros));
 #define alib_sleep_millis(millis) std::this_thread::sleep_for(std::chrono::milliseconds(millis));
-#define alib_sleep_second(second) std::this_thread::sleep_for(std::chrono::microseconds(second));
+#define alib_sleep_second(second) std::this_thread::sleep_for(std::chrono::seconds(second));
 
 #endif // __lib_aveth_utils_hpp
 
@@ -955,7 +956,6 @@ bool alib_j_cokeys(___alib__json j, std::string _s) {
         j_t = j_t.at(s_cur);
     }
     return true;
-
 }
 #undef JSONREF
 #undef _CRT_SECURE_NO_WARNINGS

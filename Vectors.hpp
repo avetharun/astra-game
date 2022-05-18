@@ -1,17 +1,47 @@
 #ifndef __cw_vector_hpp
 #define __cw_vector_hpp
-
+#include <nlohmann/json/json.hpp>
 #include <iostream>
 #include <glm/glm.hpp>
-struct VectorF : glm::vec<1, float> {
-	VectorF(auto _iv) {
-		*this = _iv;
+//typedef int Vector;
+
+using json = nlohmann::json;
+struct highp_ivec1_cw_impl {
+	double x = 0;
+	highp_ivec1_cw_impl() {}
+	operator int() { return lround(this->x); }
+	int operator *= (auto other) { return this->x *= other; }
+	int operator /= (auto other) { return this->x /= other; }
+	int operator += (auto other) { return this->x += other; }
+	int operator -= (auto other) { return this->x -= other; }
+	int operator ++ (auto other) { return this->x++; }
+	int operator -- (auto other) { return this->x--; }
+	bool operator ==(auto other) { return (this->x == other); }
+
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(highp_ivec1_cw_impl, x);
+
+
+
+struct Vector : highp_ivec1_cw_impl {
+	Vector(auto _iv) {
+		this->x = _iv;
+	}
+	Vector(int _iv) {
+		this->x = (_iv);
 	}
 	operator int() {
-		return *this;
+		return (this->x);
+	}
+	friend std::ostream& operator<<(std::ostream& os, const Vector& o)
+	{
+		os << o.x;
+		return os;
+	}
+	static int distance(Vector first, Vector second) {
+		return fabsl(second.x - first.x);
 	}
 };
-typedef int Vector;
 struct Vector2 {
 
 	static Vector2* lu_new(int x, int y) {
@@ -65,16 +95,16 @@ struct Vector2 {
 	Vector2 operator *(Vector2 other) {
 		return { x * other.x, y * other.y };
 	}
-	Vector2 operator -(int other) {
+	Vector2 operator -(Vector other) {
 		return { x - other, y - other };
 	}
-	Vector2 operator +(int other) {
+	Vector2 operator +(Vector other) {
 		return { x + other, y + other };
 	}
-	Vector2 operator /(int other) {
+	Vector2 operator /(Vector other) {
 		return { x / other, y / other };
 	}
-	Vector2 operator *(int other) {
+	Vector2 operator *(Vector other) {
 		return { x * other, y * other };
 	}
 	bool operator ==(const nullptr_t other) {
@@ -89,13 +119,13 @@ struct Vector2 {
 	bool operator < (Vector2 other) {
 		return (x < other.x && y < other.y) ? true : false;
 	}
-	bool operator ==(int other) {
+	bool operator ==(Vector other) {
 		return (x == other && y == other) ? true : false;
 	}
-	bool operator > (int other) {
+	bool operator > (Vector other) {
 		return (x > other && y > other) ? true : false;
 	}
-	bool operator < (int other) {
+	bool operator < (Vector other) {
 		return (x < other && y < other) ? true : false;
 	}
 	Vector luaL_getx() { return x; }
@@ -124,10 +154,10 @@ struct Vector2 {
 Vector2 Vector2::up = Vector2{ 0,1 };
 Vector2 Vector2::right = Vector2{ 1,0 };
 struct VectorRect {
-	Vector w = 1;
-	Vector h = 1;
 	Vector x = 0;
 	Vector y = 0;
+	Vector w = 1;
+	Vector h = 1;
 	static SDL_Rect _emptyRect;
 
 	static VectorRect* lu_new(int x, int y, int w, int h) {
@@ -146,10 +176,10 @@ struct VectorRect {
 		_n->h = h;
 		return _n;
 	}
-	Vector sx(int v = INT32_MAX) { if (v == INT32_MAX) { return this->x; } this->x = v; return this->x; }
-	Vector sy(int v = INT32_MAX) { if (v == INT32_MAX) { return this->y; } this->y = v; return this->y; }
-	Vector sw(int v = INT32_MAX) { if (v == INT32_MAX) { return this->w; } this->w = v; return this->w; }
-	Vector sh(int v = INT32_MAX) { if (v == INT32_MAX) { return this->h; } this->h = v; return this->h; }
+	Vector sx(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->x; } this->x = v; return this->x; }
+	Vector sy(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->y; } this->y = v; return this->y; }
+	Vector sw(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->w; } this->w = v; return this->w; }
+	Vector sh(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->h; } this->h = v; return this->h; }
 
 	Vector gx() { return this->x; }
 	Vector gy() { return this->y; }
@@ -169,8 +199,8 @@ struct VectorRect {
 	}
 
 	VectorRect() {}
-	VectorRect(int _w, int _h, int _x, int _y) {
-		w = _w; h = _h; x = _x; y = _y;
+	VectorRect(auto _x, auto _y, auto _w, auto _h) {
+		w.x = _w; h.x = _h; x.x = _x; y.x = _y;
 	}
 	operator SDL_Rect() {
 		return SDL_Rect{

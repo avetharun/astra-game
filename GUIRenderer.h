@@ -22,7 +22,7 @@ namespace UI {
 	struct TextElement;
 	struct ButtonElement;
 	struct ImageElement;
-	std::vector<std::any> _element_arr;
+	std::vector<std::any*> _element_arr;
 	// rect:
 	// xy = pos
 	// wh = scale
@@ -67,27 +67,32 @@ namespace UI {
 	};
 	struct ImageElement {
 		bool enabled = true;
-		unsigned char* pixels;
-		int width, height, pitch;
+		std::shared_ptr < SDL_Surface > surf;
+		SDL_Texture* texture;
 		VectorRect uv{0,0,1,1};
-		GLuint texid;
-		void operator ~() { free(pixels); }
+		Transform transform;
+		void operator ~() { }//glDeleteTextures(1, &texid); }
 		ImageElement(const char* filename) {
-			ImplLoadTextureFromFile(filename, &texid, &width, &height);
-			_element_arr.push_back(this);
+			surf = std::shared_ptr<SDL_Surface>(IMG_Load(filename));
+			texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf.get());
+			_element_arr.push_back(new std::any(this));
 		}
 		void Render() {
-			ImVec2 uvbegin = {(float)uv.x, (float)uv.y};
-			ImVec2 uvend =   {(float)uv.w, (float)uv.h};
-			ImGui::Begin(_fmt_name().c_str(), 0, GUIRenderer::__elementWinFlags);
-			printf("rendering ui image, (%d, %d) to (%d, %d) with size (%d, %d)\n", uvbegin.x, uvbegin.y, uvend.x, uvend.y, width, height);
-			ImGui::Image((void*)(intptr_t)texid, ImVec2(width,height), uvbegin, uvend);
-			ImGui::End();
+
+			if (!surf) {
+				_element_arr.erase(_element_arr.begin() + ui_elem_offset);
+				return;
+			}
+			SDL_Rect _src = {uv.x, uv.y, uv.w, uv.h};
+			SDL_Rect _dst = { transform.position.x, transform.position.y, transform.scale.x, transform.scale.y };
+			int _ = SDL_RenderCopyEx(SDL_REND_RHPP, texture, &_src, &_dst, transform.angle, NULL, SDL_FLIP_NONE);
+			if (_ < 0) {
+				printf("Unable to draw: %s\n", SDL_GetError());
+				return;
+			}
+			//printf("Rendering ui image with size (%d, %d) at (%d, %d) with uv (%d, %d, %d, %d)\n", transform.scale.x, transform.scale.y, transform.position.x, transform.position.y, uv.x, uv.y, uv.w, uv.h);
 		}
 	};
-
-
-
 }
 
 #endif

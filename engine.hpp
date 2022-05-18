@@ -36,8 +36,6 @@ typedef __int64 int64;
 
 
 #include "GUIRenderer.h"
-
-
 struct Window {
 private:
 	SDL_Event sdlevent;
@@ -74,26 +72,6 @@ public:
 			#endif
 			ZeroMemory(&initFunc, 0);
 		}
-	};
-	struct Time {
-		
-		float TimeSinceStart = 0;
-		static long double DeltaTime;
-		static float fps;
-		struct Timer {
-		private: 
-			std::chrono::steady_clock::time_point _start;
-			std::chrono::steady_clock::time_point _end;
-		public:
-			std::chrono::duration<long double, std::milli> Elapsed;
-			void Start() {
-				_start = std::chrono::high_resolution_clock::now();
-			}
-			void End() {
-				_end = std::chrono::high_resolution_clock::now();
-				 Elapsed = _end - _start;
-			}
-		};
 	};
 	struct Initializer {
 		Initializer(std::function<void()> initFunc) {  
@@ -450,7 +428,8 @@ public:
 				break;
 			}
 		}
-		time.DeltaTime = (double)ImGui::GetIO().DeltaTime * 1000;
+		Time::DeltaTimeUnscaled = (double)ImGui::GetIO().DeltaTime * 1000;
+		Time::DeltaTime = Time::DeltaTimeUnscaled * Time::DeltaTimeScale;
 		Time::fps = ImGui::GetIO().Framerate;
 	}
 	void AddComponent(Component* c) {
@@ -509,13 +488,10 @@ void Window::PostRenderInternal() {
 		/*(components[i] == NULL) ? noop :*/components[i]->PostRender();
 	}
 }
-long double Window::Time::DeltaTime = 0.0;
-float Window::Time::fps = 0.0f;
 #include "cwlib/cwlib.hpp"
 #pragma endregion
 #define Keyboard Window::WindowInstance->keyboard
 #define Mouse Window::WindowInstance->mouse
 #define WindowRenderer Window::WindowInstance->SDL_REND
-#define Time Window::WindowInstance->time
 #define Win Window::WindowInstance
 #endif

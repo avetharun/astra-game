@@ -38,13 +38,6 @@ void initDataLua(Sprite* _s, SDL_Renderer* renderOBJ) {
 	__sdlRenderer = renderOBJ;
 	windowInstance = Win;
 }
-struct lu_time {
-	static long double* DeltaTime;
-};
-long double* lu_time::DeltaTime = nullptr;
-void lu_initTime(long double* deltatime) {
-	lu_time::DeltaTime = deltatime;
-}
 void lu_cw_loadScene(std::string sceneName) {
 	if (!alib_endswith(sceneName.c_str(), ".cwl")) {
 		sceneName.append(".cwl");
@@ -122,9 +115,71 @@ void do_n(int amt, std::function<void()> __run) {
 		__run();
 	}
 }
+std::map<std::string, const luabridge::LuaRef> __lu_preupdate__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_update__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_postupdate__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_start__funcs;
+void lu_cw_add_preu(std::string __name, const luabridge::LuaRef __preufunc) {
+	__lu_preupdate__funcs.insert({ __name, __preufunc});
+}
+void lu_cw_add_update(std::string __name, const luabridge::LuaRef __ufunc) {
+	__lu_update__funcs.insert({__name, __ufunc});
+}
+void lu_cw_add_postu(std::string __name, const luabridge::LuaRef __postufunc) {
+	__lu_postupdate__funcs.insert({ __name, __postufunc});
+}
+void lu_cw_add_start(std::string __name, const luabridge::LuaRef __sfunc) {
+	__lu_start__funcs.insert({ __name, __sfunc});
+}
 
+
+void lu_cw_del_preu(std::string __name) {
+	__lu_preupdate__funcs.erase(__name);
+}
+void lu_cw_del_update(std::string __name) {
+	__lu_update__funcs.erase(__name);
+}
+void lu_cw_del_postu(std::string __name) {
+	__lu_postupdate__funcs.erase( __name);
+}
+void lu_cw_del_start(std::string __name) {
+	__lu_start__funcs.erase(__name);
+}
+
+Window::Component __lu_component_impl;
+void lu_cw_start_func_impl() {
+	for (int i = 0; i < __lu_start__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_start__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+}
+void lu_cw____update_func_impl() {
+	for (int i = 0; i < __lu_update__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_update__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+}
+void lu_cw_posupdate_func_impl() {
+	for (int i = 0; i < __lu_postupdate__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_postupdate__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+}
+void lu_cw_preupdate_func_impl() {
+	for (int i = 0; i < __lu_preupdate__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_preupdate__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+}
+
+
+Vector lu_cw_vector__get(Vector const& _v) { return _v; }
+void lu_cw_vector__set(Vector & _vec, double _vec_val) { _vec = _vec_val; }
 alib_inline_run _nn([&]() {
-
+	__lu_component_impl.Start = &lu_cw_start_func_impl;
+	__lu_component_impl.Update = &lu_cw____update_func_impl;
+	__lu_component_impl.PreUpdate = &lu_cw_preupdate_func_impl;
+	__lu_component_impl.PostUpdate = &lu_cw_posupdate_func_impl;
 	initLUA(state);
 
 	luaL_openlibs(state);
@@ -138,11 +193,36 @@ alib_inline_run _nn([&]() {
 	setGlobalLuaNum(state, "c_trigger", COL_TRG);
 	setGlobalLuaNum(state, "c_solid", COL_SOLID);
 
+
 	alu_global.beginNamespace("cw")
 		.addFunction("load", &lu_cw_loadScene)
 		.addFunction("unload", &lu_cw_unloadScene)
 		.addFunction("reload", &lu_cw_reloadScene)
+		.addFunction("add_start", &lu_cw_add_start)
+		.addFunction("add_pre_update", &lu_cw_add_preu)
+		.addFunction("add_update", &lu_cw_add_update)
+		.addFunction("add_post_update", &lu_cw_add_postu)
+		.addFunction("delete_start", &lu_cw_del_start)
+		.addFunction("delete_pre_update", &lu_cw_del_preu)
+		.addFunction("delete_update", &lu_cw_del_update)
+		.addFunction("delete_post_update", &lu_cw_del_postu)
 	.endNamespace();
+
+	alu_global.beginNamespace("Time")
+		.addConstant("DeltaTime", &Time::DeltaTime)
+		.addConstant("DeltaTimeUnscaled", &Time::DeltaTimeUnscaled)
+		.addConstant("fps", &Time::fps)
+		.addVariable("DeltaTimeScale", &Time::DeltaTimeScale)
+		.beginClass<Time::Timer>("Timer")
+			.addData("elapsed", &Time::Timer::elapsed, false)
+			.addFunction("start", &Time::Timer::Start)
+			.addFunction("end", &Time::Timer::End)
+		.endClass()
+	.endNamespace();
+	alu_global.beginClass<Vector>("Vector")
+		.addData("x", &Vector::x)
+		.addStaticFunction("distance", &Vector::distance)
+	.endClass();
 	alu_global.beginClass<Vector2>("Vector2")
 		.addStaticFunction("new", &Vector2::lu_new) // ctor
 		.addStaticFunction("distance", &Vector2::distance)
@@ -199,7 +279,6 @@ alib_inline_run _nn([&]() {
 			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->h; }),
 			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->h = v; })
 		)
-		.addFunction("onIntersect", &RectCollider2d::setCallback)
 		.addStaticFunction("dump_debug", &RectCollider2d::dump_debug)
 	.endClass();
 	// I despise programming like this
@@ -212,9 +291,6 @@ alib_inline_run _nn([&]() {
 		.addFunction("lerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
 			return (start + (end - start) * percent);
 		}))
-	.endNamespace();
-	alu_global.beginNamespace("Time")
-		.addFunction("deltatime", std::function<double()>([]() -> double {return (double) * lu_time::DeltaTime; }))
 	.endNamespace();
 	alu_global.beginClass<AudioWAV>("Audio")
 		.addFunction("name", &AudioWAV::name)

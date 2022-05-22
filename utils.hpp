@@ -743,6 +743,13 @@ std::string alib_lower(const char* s)
     std::transform(s2.begin(), s2.end(), s2.begin(), tolower);
     return s2;
 }
+std::string alib_lowers(std::string s)
+{
+    std::string s2 = s;
+    std::transform(s2.begin(), s2.end(), s2.begin(), tolower);
+    return s2;
+}
+
 
 // Uppercases string
 std::string alib_upper(const char* s)
@@ -752,6 +759,12 @@ std::string alib_upper(const char* s)
     return s2;
 }
 
+std::string alib_uppers(std::string s)
+{
+    std::string s2 = s;
+    std::transform(s2.begin(), s2.end(), s2.begin(), toupper);
+    return s2;
+}
 int alib_percent(long double num, double percent) {
     long double _n_d100 = (num / 100);
     return lroundl( _n_d100 * percent);
@@ -914,7 +927,9 @@ double alib_j_getd(JSONREF j) {
     return j.get<double>();
 }
 std::string alib_j_getstr(JSONREF j) {
-    return j.get<std::string>();
+    if (j.is_string()) {
+        return j.get<std::string>();
+    } return "";
 }
 const char* alib_j_getchara(JSONREF j) {
     return alib_j_getstr(j).c_str();
@@ -927,7 +942,7 @@ bool alib_j_streq(JSONREF j, std::string match) {
 bool alib_j_costr(JSONREF j, std::string match) {
     if (j.is_array()) {
         for (int i = 0; i < j.size(); i++) {
-            if (j[i].get<std::string>().compare(match.c_str()) == 0) { return true; };
+            if (j.at(i).get<std::string>().compare(match.c_str()) == 0) { return true; };
         }
     }
     // If j_ty = array : the following will always return false.

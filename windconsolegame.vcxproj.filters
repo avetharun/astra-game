@@ -81,7 +81,7 @@
     <ClInclude Include="imgui\imstb_truetype.h">
       <Filter>imgui</Filter>
     </ClInclude>
-    <ClInclude Include="asl.hpp">
+    <ClInclude Include="cw_lua_interp.hpp">
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="lua.hpp">
@@ -123,12 +123,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
-    <None Include="out\json.lua">
-      <Filter>lua</Filter>
-    </None>
-    <None Include="out\debug.lua">
-      <Filter>lua</Filter>
-    </None>
     <None Include="out\main.cwl">
       <Filter>world</Filter>
     </None>
@@ -137,6 +131,9 @@
     </None>
     <None Include="build\tra\test.lua">
       <Filter>world</Filter>
+    </None>
+    <None Include="out\main.lua">
+      <Filter>lua</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

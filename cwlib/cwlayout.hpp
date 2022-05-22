@@ -10,7 +10,7 @@
 #include "../GUIRenderer.h"
 
 
-struct cwLayout : private ABT {
+struct cwLayout : public ABT {
 	bool isBinary;
 	const std::string name;
 	cwLayout(const char* filename) {
@@ -22,6 +22,7 @@ struct cwLayout : private ABT {
 		cwError::serrof("Loading CW layout %s\n", filename);
 		this->decompile(filename);
 		static_cast<std::string>(name) = filename;
+		if (data.contains("autoexec")) {}
 		if (data.contains("layout")) {
 			parse_scene_assets();
 		}
@@ -33,24 +34,63 @@ private:
 		*h_out = alib_percents(_s->surf->h, h_in);
 	}
 	Vector2 parse_vector2(json stub) {
-		return { alib_j_geti(stub["x"]),alib_j_geti(stub["y"])};
+		return { alib_j_getd(stub["x"]),alib_j_getd(stub["y"])};
+	}
+	Vector2 parse_vector2a(json stub) {
+		return { alib_j_getd(stub[0]),alib_j_getd(stub[1]) };
 	}
 	std::map<std::string, json> template_assets;
 	std::map<std::string, Sprite*> sprite_assets;
 	std::map<std::string, UI::ImageElement*> ui_img_elem_assets;
 	std::map<std::string, UI::TextElement*> ui_txt_elem_assets;
-
+	MeshCollider2d* __parse_scene_mesh(json& stub) {
+		json stub_ad = stub["asset_data"];
+		json stub_lines = stub["asset_data"].at("lines");
+		size_t line_amt = stub_lines.size();
+		printf("Starting to create scene mesh.. Amount of lines: %zi\n", line_amt);
+		
+		MeshCollider2d* _mesh_ = new MeshCollider2d();
+		int __layer = COL_EMPTY;
+		if (stub_ad.contains("layer")) {
+			std::string _s = alib_lowers(alib_j_getstr(stub_ad.at("layer")));
+			if (alib_streq(_s, "solid")) {
+				__layer = COL_SOLID;
+			}
+			if (alib_streq(_s, "empty")) {
+				__layer = COL_EMPTY;
+			}
+		}
+		//int __layer = stub_ad["layer"];
+		for (int i = 0; i < line_amt; i++) {
+			MeshLine* _m = new MeshLine();
+			_m->layer = __layer;
+			_m->start = parse_vector2a(stub_lines.at(i).at(0));
+			_m->end = parse_vector2a(stub_lines.at(i).at(1));
+			_mesh_->lines.push_back(_m);
+			printf("Created line from (%f, %f) to (%f, %f)", _m->start.x, _m->start.y, _m->end.x, _m->end.y);
+		}
+		return _mesh_;
+	}
 	Sprite* parse_scene_sprite(json& stub) {
 		if (alib_j_cokeys(stub, "asset_data\nfilename")) {
-			Sprite* _s = new Sprite(alib_j_getstr(stub["asset_data"]["filename"]).c_str());
-			_s->setID(alib_j_getstr(stub["id"]).c_str());
 			json stub_ad = stub["asset_data"];
 			json stub_tr = stub["asset_data"]["transform"];
-			int ox, oy;
-			int x = 0, y = 0, w, h;
-			
-			if (stub_tr.at("w").is_string()) { w = alib_percents(_s->surf->w, stub_tr.at("w").get<std::string>()); } else {w = stub_tr.at("w").get<int>();}
-			if (stub_tr.at("h").is_string()) { h = alib_percents(_s->surf->h, stub_tr.at("h").get<std::string>()); } else {h = stub_tr.at("h").get<int>();}
+			double ox, oy;
+			double x = 0, y = 0, w, h;
+			SDL_Rect __uv = {0,0,0,0};
+			if (alib_j_cokeys(stub["asset_data"], "uv")) {
+				if (stub["asset_data"]["uv"].is_array()) {
+					json uvstub = stub["asset_data"]["uv"];
+					__uv.x = uvstub[0][0].get<int>();
+					__uv.y = uvstub[0][1].get<int>();
+					__uv.w = uvstub[1][0].get<int>();
+					__uv.h = uvstub[1][1].get<int>();
+				}
+			}
+			Sprite* _s = new Sprite(alib_j_getstr(stub["asset_data"]["filename"]).c_str(), __uv);
+			_s->setID(alib_j_getstr(stub["id"]));
+			if (stub_tr.at("w").is_string()) { w = alib_percents(_s->uv.w, stub_tr.at("w").get<std::string>()); } else {w = stub_tr.at("w").get<int>();}
+			if (stub_tr.at("h").is_string()) { h = alib_percents(_s->uv.h, stub_tr.at("h").get<std::string>()); } else {h = stub_tr.at("h").get<int>();}
 			if (!alib_j_cokeys(stub_ad, "origin")) {
 				ox = (int)(w * 0.5);
 				oy = (int)(h * 0.5);
@@ -61,8 +101,8 @@ private:
 			}
 			if ((stub_tr.contains("x")) && stub_tr.at("x").is_number_integer()) { x = stub_tr.at("x").get<int>(); }
 			if ((stub_tr.contains("y")) && stub_tr.at("y").is_number_integer()) { y = stub_tr.at("y").get<int>(); }
-			printf("CW: Created world sprite with %d, %d at %d, %d using origin %d, %d\n", w, h, x, y, ox, oy);
-			_s->transform = {
+			printf("CW: Created world sprite with %f, %f at %f, %f using origin %f, %f\n", w, h, x, y, ox, oy);
+			_s->transform = Transform{
 				{x,y},
 				{w,h},
 				{ox, oy},
@@ -86,16 +126,15 @@ private:
 		return nullptr;
 	}
 	void parse_scene_assets() {
-		if (!this->data["layout"].is_array()) { return; }
-		size_t assets_count = this->data["layout"].size();
+		if (!this->data.contains("layout")) { return; }
+		if (!this->data.at("layout").is_array()) { return; }
+		size_t assets_count = this->data.at("layout").size();
 		for (int i = 0; i < assets_count; i++) {
 			try {
-				json stub = this->data["layout"][i];
+				json stub = this->data.at("layout").at(i);
 				if (stub.contains("schema")) {
-					if (alib_j_costr(stub["schema"], "image") && !alib_j_costr(stub["schema"], "animated") && !alib_j_costr(stub["schema"], "ui")) {
-						printf("a\n");
-						parse_scene_sprite(stub);
-						continue;
+					if (alib_j_costr(stub["schema"], "mesh")) {
+						MeshCollider2d* _mesh = __parse_scene_mesh(stub);
 					}
 					if (alib_j_costr(stub["schema"], "ui")) {
 						if (alib_j_costr(stub["schema"], "image")) {
@@ -130,12 +169,13 @@ private:
 							ui_txt_elem_assets.insert({ stub.at("id"), _t});
 							continue;
 						}
+						continue;
+					}
+					if (alib_j_costr(stub["schema"], "image") && !alib_j_costr(stub["schema"], "animated")) {
+						parse_scene_sprite(stub);
+						continue;
 					}
 				}
-			}
-			catch (json::type_error e) {
-				cwError::sstate(cwError::CW_ERROR);
-				cwError::serrof("TypeError when reading CWL file: what():%s | id %d", e.what(), e.id);
 			}
 			catch (json::parse_error e) {
 				cwError::sstate(cwError::CW_ERROR);
@@ -145,6 +185,7 @@ private:
 	}
 public:
 	void Discard() {
+		if (this == nullptr) { return; }
 		this->invalidate();
 
 		for (const auto& kv : sprite_assets) {

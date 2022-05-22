@@ -57,7 +57,7 @@ public:
 	std::function< void() > OnFocusLost = [] {noop; };		// 
 	struct Component {
 		std::map<std::string, int> conds;
-		int64_t data = B64(00000000,00000000,00000000,00000000, 00000000, 00000000, 00000000, 00000000);
+		double data = B32(00000000,00000000,00000000,00000000);
 		std::function< void() > Start = [] {noop;};			// Code to run before first frame
 		std::function< void() > PreUpdate = [] {noop; };		// Code to run before every frame
 		std::function< void() > Update = [] {noop;};			// Code to run every frame
@@ -85,23 +85,30 @@ public:
 	};
 	struct Keyboard {
 		char keys[1024]{};
-		std::function <void(unsigned char, char*)> onKeyPress = [](  unsigned char,  char*) {};
-		std::function <void(unsigned char, char*)> onKeyRelease = [](unsigned char,  char*) {};
-		std::function <void(unsigned char, char*)> onKeyHold = [](   unsigned char,  char*) {};
+		char key_frame[1024]{};
+		std::function <void(unsigned char)> onKeyPress = [](  unsigned char) {};
+		std::function <void(unsigned char)> onKeyRelease = [](unsigned char) {};
+		std::function <void(unsigned char)> onKeyHold = [](   unsigned char) {};
 
-		void KeyboardDown(unsigned char key, SDL_Event ev) {
-			keys[key] = true + true;
-			onKeyPress(key, keys);
+		void EmulateKeyboardDown(unsigned char key, SDL_Event ev) {
+			keys[key] = true;
+			if (!key_frame[key]) {
+				key_frame[key] = true;
+				onKeyPress(key);
+				return;
+			}
+			onKeyHold(key);
 		}
-		void KeyboardUp(unsigned char key, SDL_Event ev) {
+		void EmulateKeyboardUp(unsigned char key, SDL_Event ev) {
 			keys[key] = false;
-			onKeyRelease(key, keys);
+			key_frame[key] = false;
+			onKeyRelease(key);
 		}
 		bool GetKey(int k) { // Is Key pressed?
 			return keys[k];
 		}
 		bool GetKeyDown(int k) { // Key pressed this frame?
-			return (keys[k] == true + true) ? true : false;
+			return key_frame[k];
 		}
 		void flush() {
 			memset(keys, 0, 1024);
@@ -109,8 +116,10 @@ public:
 	};
 	struct Mouse {
 		int x; int y;
-		bool m1d;
-		bool m2d;
+		bool m1d, m2d, m3d, mt1d, mt2d;
+		
+		std::function <void(int, int, bool, bool, bool, bool, bool)> onClick = [](int x, int y, bool l, bool r, bool m, bool t1, bool t2) {};
+		std::function <void(int, int)> onMove = [](int x, int y) {};
 	};
 	bool hasFocus;
 	Mouse mouse;
@@ -182,8 +191,10 @@ public:
 
 		SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 		SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+		
+		uint32_t __winflags = SDL_RENDERER_PRESENTVSYNC | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
 		hdc = GetDC(hwnd);
-		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, (SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI));
+		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, (__winflags));
 		hwnd = ::GetActiveWindow();
 		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED);
 		SDL_SetRenderDrawBlendMode(SDL_REND, SDL_BLENDMODE_BLEND);
@@ -220,7 +231,7 @@ public:
 		ImGuiTextBuffer debugWindowConsoleText;
 		int m_scrollToBottom = false;
 		void pushuf(std::string cstr) {
-			cstr.push_back('\n');
+			if (&debugWindowConsoleText == nullptr) { return; }
 			debugWindowConsoleText.append(cstr.c_str());
 			m_scrollToBottom = 10;
 		}
@@ -228,7 +239,6 @@ public:
 			if (&debugWindowConsoleText == nullptr) { return; }
 			va_list args;
 			va_start(args, fmt);
-			fmt.push_back('\n');
 			debugWindowConsoleText.appendfv(fmt.c_str(), args);
 			va_end(args);
 			m_scrollToBottom = 10;
@@ -268,6 +278,12 @@ public:
 	void DebugWindow() {
 		ImGui::Begin("Debug Console");
 		ImGui::BeginChildFrame(10, {0,ImGui::GetWindowHeight() - 75});
+		if (cons.debugWindowConsoleText.size() > 2048) {
+			std::string __tmp = cons.debugWindowConsoleText.end() - 2044;
+			__tmp.assign(__tmp.c_str() + __tmp.find('\n'));
+			cons.debugWindowConsoleText.clear();
+			cons.debugWindowConsoleText.append(__tmp.c_str());
+		}
 		ImGui::TextColouredFormatted(cons.debugWindowConsoleText.begin());
 		if (cons.m_scrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
 			ImGui::SetScrollHereY(1.0f);
@@ -319,18 +335,31 @@ public:
 			{
 			default: break;
 			case SDL_MOUSEBUTTONUP:
-			case SDL_MOUSEBUTTONDOWN:
-			case SDL_MOUSEMOTION:
-				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_MOUSE_FOCUS) {
-					mouse.m1d = false; mouse.m2d = false;    
-					if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-						mouse.m1d = true;
-					}
-					if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-						mouse.m2d = true;
-					}
+			case SDL_MOUSEBUTTONDOWN: {
+
+				mouse.m1d = false; mouse.m2d = false; mouse.m3d = false; mouse.mt1d = false; mouse.mt2d = false;
+				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+					mouse.m1d = true;
 				}
-				break;
+				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
+					mouse.m2d = true;
+				}
+				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+					mouse.m3d = true;
+				}
+				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_X1)) {
+					mouse.mt1d = true;
+				}
+				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_X2)) {
+					mouse.mt2d = true;
+				}
+				mouse.onClick(mouse.x, mouse.y, mouse.m1d, mouse.m2d, mouse.m3d, mouse.mt1d, mouse.mt2d);
+			} break;
+			case SDL_MOUSEMOTION: {
+				SDL_GetMouseState(&mouse.x, &mouse.y);
+				mouse.onMove(mouse.x, mouse.y);
+			} break;
+
 			case SDL_WINDOWEVENT_FOCUS_LOST:
 				this->OnFocusLost();
 				this->hasFocus = false;
@@ -354,12 +383,12 @@ public:
 				break;
 			case SDL_KEYDOWN:
 				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_INPUT_FOCUS) {
-					keyboard.KeyboardDown(sdlevent.key.keysym.scancode, sdlevent);
+					keyboard.EmulateKeyboardDown(sdlevent.key.keysym.scancode, sdlevent);
 				}
 				break;
 			case SDL_KEYUP:
 				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_INPUT_FOCUS) {
-					keyboard.KeyboardUp(sdlevent.key.keysym.scancode, sdlevent);
+					keyboard.EmulateKeyboardUp(sdlevent.key.keysym.scancode, sdlevent);
 				}
 				break;
 
@@ -401,36 +430,30 @@ public:
 		SDL_GetMouseState(&mouse.x, &mouse.y);
 		center = Vector2{ size.x / 2, size.y / 2 };
 
+
+
 		PreUpdateInternal();
 		UpdateInternal();
 		PostUpdateInternal();
 		PreRenderInternal();
 
-		if (getbitv(data, 12)) {
+		if (debug_window_open) {
 			DebugWindow();
 		}
 
 		RenderInternal();
 		Camera::GetInstance()->Update();
 		PostRenderInternal();
-		for (int i = 0; i < sizeof(keyboard.keys); i++) {
-			switch (keyboard.keys[i])
-			{
-			case true + true:
-				keyboard.keys[i] = true;
-				// Don't break, go to the next case. (:
-				keyboard.onKeyHold(i, keyboard.keys);
-				break;
-			case true:
-				keyboard.onKeyHold(i, keyboard.keys);
-				break;
-			default:
-				break;
-			}
-		}
 		Time::DeltaTimeUnscaled = (double)ImGui::GetIO().DeltaTime * 1000;
 		Time::DeltaTime = Time::DeltaTimeUnscaled * Time::DeltaTimeScale;
 		Time::fps = ImGui::GetIO().Framerate;
+		for (int i = 0; i < 1024; i++) {
+			if (keyboard.key_frame[i]) {
+				keyboard.key_frame[i] = false;
+				continue;
+			}
+		}
+
 	}
 	void AddComponent(Component* c) {
 		*this << c;

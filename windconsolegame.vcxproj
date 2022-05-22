@@ -235,7 +235,7 @@
     <ClCompile Include="runner.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="asl.hpp" />
+    <ClInclude Include="cw_lua_interp.hpp" />
     <ClInclude Include="Audio.hpp" />
     <ClInclude Include="camera.hpp" />
     <ClInclude Include="cwlib\cwabt.hpp" />
@@ -270,9 +270,8 @@
   <ItemGroup>
     <None Include="build\tra\test.lua" />
     <None Include="cpp.hint" />
-    <None Include="out\debug.lua" />
-    <None Include="out\json.lua" />
     <None Include="out\main.cwl" />
+    <None Include="out\main.lua" />
     <None Include="out\test.cwl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

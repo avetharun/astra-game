@@ -3,6 +3,7 @@
 #include <nlohmann/json/json.hpp>
 #include <iostream>
 #include <glm/glm.hpp>
+#include "LUA_INCLUDE.h"
 //typedef int Vector;
 
 using json = nlohmann::json;
@@ -22,28 +23,33 @@ struct highp_ivec1_cw_impl {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(highp_ivec1_cw_impl, x);
 
 
-
-struct Vector : highp_ivec1_cw_impl {
-	Vector(auto _iv) {
+typedef double Vector;
+struct _Vector : highp_ivec1_cw_impl {
+	_Vector(auto _iv) {
 		this->x = _iv;
 	}
-	Vector(int _iv) {
+	_Vector(int _iv) {
 		this->x = (_iv);
 	}
 	operator int() {
 		return (this->x);
 	}
-	friend std::ostream& operator<<(std::ostream& os, const Vector& o)
+	friend std::ostream& operator<<(std::ostream& os, const _Vector& o)
 	{
 		os << o.x;
 		return os;
 	}
-	static int distance(Vector first, Vector second) {
+	static int distance(_Vector first, _Vector second) {
 		return fabsl(second.x - first.x);
 	}
+	int lu_get() { return this->x; }
+	void lu_set(int _i) { this->x = _i; }
+	void lu_concat(lua_State * L) {
+		lua_concat(L, this->x);
+	}
+	_Vector* lu_new(int _i) { return new _Vector(_i); }
 };
 struct Vector2 {
-
 	static Vector2* lu_new(int x, int y) {
 		Vector2* _n = new Vector2();
 		_n->x = x;
@@ -54,7 +60,6 @@ struct Vector2 {
 	Vector gy() { return this->y; }
 	Vector sx(int v = INT32_MAX) { this->x = v; return this->x; }
 	Vector sy(int v = INT32_MAX) { this->y = v; return this->y; }
-
 	Vector2* lu_get() { return this; }
 
 	Vector x = 0; 
@@ -143,12 +148,16 @@ struct Vector2 {
 		auto x = _s.str();
 		return x.c_str();
 	}
+	operator SDL_Point () { return {(int)x,(int)y}; }
 	static Vector2 distance(Vector2 one, Vector2 two) {
 		return one - two;
 	}
 	void operator ~() {
 		delete[] this;
 	}
+
+	static Vector2 lu_invert(Vector2 v) { return -v; }
+	static Vector2 lu_abs(Vector2 v) { return {abs(v.x), abs(v.y)}; }
 };
 
 Vector2 Vector2::up = Vector2{ 0,1 };
@@ -200,7 +209,7 @@ struct VectorRect {
 
 	VectorRect() {}
 	VectorRect(auto _x, auto _y, auto _w, auto _h) {
-		w.x = _w; h.x = _h; x.x = _x; y.x = _y;
+		w = _w; h = _h; x= _x; y= _y;
 	}
 	operator SDL_Rect() {
 		return SDL_Rect{
@@ -266,6 +275,29 @@ struct VectorRect {
 	{
 		os << o.x << ", " << o.y << " (" << o.w << ':' << o.h << ")";
 		return os;
+	}
+
+	Vector2 middle_point() {
+
+		Vector2 midPoint;
+		double mpx = x + 0.5 * w;
+		double mpy = y + 0.5 * h;
+		midPoint.x = (mpx);
+		midPoint.y = (mpy);
+		return(midPoint);
+	}
+	void scale(double amount) {
+		double mx = x + 0.5 * w;
+		double my = y + 0.5 * h;
+
+		w = amount * w;
+		h = amount * h;
+
+		// Mid point remains exactly at the same location.
+		// Move the lower left corner so that it is offset from
+		// the mid point by half the length and half the width.
+		x = (mx - 0.5 * w);
+		y = (my - 0.5 * h);
 	}
 };
 SDL_Rect VectorRect::_emptyRect = SDL_Rect{ 0, 0, 0, 0 };

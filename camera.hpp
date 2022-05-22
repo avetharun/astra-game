@@ -11,12 +11,21 @@ public:
 	static Camera* s_Instance;
 	Vector2 m_Viewport = Vector2(720,720);
 	Vector2 m_Offset;
-	Vector2* m_target = nullptr;
+	Vector2* m_target = new Vector2(0,0);
 	static Camera* GetInstance(){ return s_Instance = (s_Instance != nullptr) ? s_Instance : new Camera(); }
 	Vector2 getViewport() {return m_Viewport;}
 	void SetTarget(Vector2* targ) {
 		m_target = targ;
 	};
+	static void lu_SetTarget(Vector2* target) {
+		GetInstance()->m_target = target;
+	}
+	static Vector2 lu_GetPosition() {
+		return *GetInstance()->m_target;
+	}
+	static void lu_SetPosition(Vector2 * _target) {
+		GetInstance()->m_target = _target;
+	}
 	void Update() {
 	}
 	static Vector2 Vector2ToCameraSpace(Vector2 v) {

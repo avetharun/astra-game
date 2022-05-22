@@ -16,7 +16,6 @@ namespace UI {
 				// Will shrink vector next frame.
 				continue;
 			}
-			//printf("%s\n", tx_elem.type().name());
 			if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
 				TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
 				if (!_e->enabled) { continue; }

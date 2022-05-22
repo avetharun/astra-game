@@ -25,60 +25,12 @@
 #include <variant>
 #include <gl/glew.h>
 #include <gl/GL.h>
+#include "imgui/imgui_internal.h"
+#include "imgui/imgui.h"
 
 
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
-void ImplLoadGLTextureFromSDL(SDL_Surface* surf, GLuint* out_texture_id, int* out_width, int* out_height) {
-	glGenTextures(1, out_texture_id);
-	glBindTexture(GL_TEXTURE_2D, *out_texture_id);
-
-	int Mode = GL_RGB;
-	*out_width = surf->w;
-	*out_height= surf->h;
-	if (surf->format->BytesPerPixel == 4) {
-		Mode = GL_RGBA;
-	}
-	glTexImage2D(GL_TEXTURE_2D, 0, Mode, surf->w, surf->h, 0, Mode, GL_UNSIGNED_BYTE, surf->pixels);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-}
-// Simple helper function to load an image into a OpenGL texture with common settings
-bool ImplLoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
-{
-	// Load from file
-	int image_width = 0;
-	int image_height = 0;
-
-	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
-	if (image_data == NULL)
-		return false;
-	
-	// Create a OpenGL texture identifier
-	GLuint image_texture;
-	glGenTextures(1, &image_texture);
-	glBindTexture(GL_TEXTURE_2D, image_texture);
-
-	// Setup filtering parameters for display
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
-
-	// Upload pixels into texture
-#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-#endif
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-	stbi_image_free(image_data);
-
-	*out_texture = image_texture;
-	*out_width = image_width;
-	*out_height = image_height;
-
-	return true;
-}
-
 
 namespace ImGui {
 	const char ColorMarkerStart = '^';
@@ -269,7 +221,7 @@ Uint32 getPixel(SDL_Surface* surface, int x, int y)
 		return 0;       /* shouldn't happen, but avoids warnings */
 	}
 }
-std::map<const char*, SDL_Surface*> surfFilemaps;
+std::map<std::string, SDL_Surface*> surfFilemaps;
 SDL_Surface* loadImage(const char* path)
 {	
 	return IMG_Load(path);
@@ -289,7 +241,7 @@ struct Sprite{
 	 */
 	char params;
 	const char* name = nullptr;
-	const char* identifier = nullptr;
+	std::string identifier = "";
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
@@ -307,6 +259,15 @@ struct Sprite{
 	unsigned char* pixels = nullptr;
 	int channels = 4;
 	SDL_Rect uv{};
+	SDL_Rect __uv_last{};
+	
+	/*
+	Theory:
+	Starting position of uv = uv.x, uv.y
+	Multiply xy with the following vector, which will be the "tile" of the sprite. Check if in bounds.
+	*/
+	Vector2 uv_tile{0,0};
+	SDL_Rect uv_final{};
 	void unlockCamera() {
 		setbitv(params, 0, 0);
 	}
@@ -316,13 +277,20 @@ struct Sprite{
 	Vector2 center_position{};
 	Vector2 _offset{};
 	Vector2 _cameraViewOffset{};
-	SDL_Rect* rect {nullptr};
+	SDL_Rect* rect = nullptr;
 	Transform transform{};
-
-
-
+	int calc_uv_pair(int from, int base, int amt) {
+		if (from == 0) { return base * amt; }
+		if (amt == 0) { return from; }
+		return from + ((base * (amt)) - base);
+	}
+	Vector2 pixel_size;
 	void Update() {
-		if (getbitv(params, 0)) {
+		uv_final.x = calc_uv_pair(uv.x, uv.w, uv_tile.x);
+		uv_final.y = calc_uv_pair(uv.y, uv.h, uv_tile.y);
+		uv_final.w = uv.w;
+		uv_final.h = uv.h;
+		if (center) {
 			_offset = Vector2(
 				Camera::GetInstance()->m_Viewport.x / 2,
 				Camera::GetInstance()->m_Viewport.y / 2
@@ -352,6 +320,11 @@ struct Sprite{
 			rect->x + rect->w / 2,
 			rect->y + rect->h / 2
 		);
+
+		if (!SDL_RectEmpty(rect)) {
+			pixel_size.x = transform.scale.x / this->rect->w;
+			pixel_size.y = transform.scale.x / this->rect->h;
+		}
 	};
 	bool manualDraw = false;
 	bool isRendering;
@@ -385,14 +358,14 @@ struct Sprite{
 
 		isRendering = true;
 		int SDL_FLIP_V = SDL_FLIP_NONE;
-		SDL_Point _origin = SDL_Point{ transform.origin.x, transform.origin.y };
+		SDL_Point _origin = SDL_Point{ (int)transform.origin.x, (int)transform.origin.y };
 		if (&uv == nullptr || SDL_RectEmpty(&uv))
 		{
 			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
 				? []() {std::cout << SDL_GetError() << '\n'; }() : noop;
 		}
 		else {
-			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, &uv, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
+			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, &uv_final, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
 				? []() {std::cout << SDL_GetError() << '\n'; }() : noop;
 		}
 	}
@@ -409,7 +382,6 @@ struct Sprite{
 		RtlZeroMemory(this, sizeof(struct Sprite));
 		
 	}
-
 	Sprite(const char* filename, SDL_Rect spriteuv = SDL_Rect{ 0,0,0,0 }) {
 		name = filename;
 		uv = spriteuv;
@@ -417,9 +389,10 @@ struct Sprite{
 		_mglobalspritearr.push_back(this);
 		_cameraViewOffset = Vector2(0, 0);
 		unlockCamera();
-		std::map<const char*, SDL_Surface*>::iterator it = surfFilemaps.find(filename);
-		if (it == surfFilemaps.end())
+		printf("%d: ", surfFilemaps.contains(filename));
+		if (!surfFilemaps.contains(filename))
 		{
+
 			surf = loadImage(filename);
 			if (surf == nullptr) {
 				std::cout << "Surface null in build source " << __FILE__ << " with surface file: " << filename << std::endl;
@@ -430,7 +403,7 @@ struct Sprite{
 			surfFilemaps.emplace(filename, surf);
 		}
 		else {
-			surf = surfFilemaps[filename];
+			surf = surfFilemaps.at(filename);
 			std::cout << "Created surface from pre existing sprite at " << filename << " with " << (int)surf->format->BytesPerPixel << " channels with report of " << IMG_GetError() << '\n';
 		}
 		if (uv.x == 0 && uv.y == 0 && uv.w == 0 && uv.h == 0) {
@@ -441,15 +414,14 @@ struct Sprite{
 		Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);
 		return;
 	}
-	void setID(const char* i) {
+	void setID(std::string i) {
 		this->identifier = i;
 	}
 	static Sprite* getElementByID(std::string id) {
 		for (int i = 0; i < _mglobalspritearr.size(); i++) {
 			Sprite* _s = _mglobalspritearr[i];
-			if (_s->identifier == nullptr) { continue; }
 			std::cout << "Testing ID '" << id.c_str() << "' with id '" << _s->identifier << '\'' << '\n';
-			if (strcmp(id.c_str(), _s->identifier)) {
+			if (alib_streq(id, _s->identifier.c_str())) {
 				std::cout << "ID matches!";
 				return _s;
 			}
@@ -458,6 +430,11 @@ struct Sprite{
 	}
 
 
+	void lua_set_uv(int x, int y, int w, int h) {
+		this->uv = { x,y,w,h };
+	}
+	SDL_Rect lua_get_uv() { return this->uv; }
+	lua_Number lu_getLayer() { return (this->layer); }
 	Vector2 getPosition() {
 		return transform.position;
 	}
@@ -484,16 +461,16 @@ struct Sprite{
 	void setEnabled(bool val) {
 		this->enabled = val;
 	}
-	std::list<int> luaGetScale() {
+	std::list<double> luaGetScale() {
 		return {this->transform.scale.x, this->transform.scale.y};
 	}
-	std::list<int> luaGetPosition() {
+	std::list<double> luaGetPosition() {
 		return { this->transform.position.x, this->transform.position.y };
 	}
 	int luaGetRotation() {
 		return transform.angle;
 	}
-	void luaScale(std::vector<int> _scal) {
+	void luaScale(std::vector<double> _scal) {
 		if (_scal.size() < 2) {
 			luaL_error(_lstate, "Error: Scale requires two values, amount of values used: %i", _scal.size());
 			return;

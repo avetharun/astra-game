@@ -83,10 +83,11 @@ namespace UI {
 				_element_arr.erase(_element_arr.begin() + ui_elem_offset);
 				return;
 			}
-			SDL_Rect _src = {uv.x, uv.y, uv.w, uv.h};
-			SDL_Rect _dst = { transform.position.x, transform.position.y, transform.scale.x, transform.scale.y };
-			int _ = SDL_RenderCopyEx(SDL_REND_RHPP, texture, &_src, &_dst, transform.angle, NULL, SDL_FLIP_NONE);
-			if (_ < 0) {
+			SDL_Rect _src = {(int)uv.x, (int)uv.y, (int)uv.w, (int)uv.h};
+			SDL_Point _origin_ = {transform.origin.x, transform.origin.y};
+			SDL_Rect _dst = { (int)transform.position.x, (int)transform.position.y, (int)transform.scale.x, (int)transform.scale.y };
+			int status = SDL_RenderCopyEx(SDL_REND_RHPP, texture, &_src, &_dst, transform.angle, &_origin_, SDL_FLIP_NONE);
+			if (status < 0) {
 				printf("Unable to draw: %s\n", SDL_GetError());
 				return;
 			}

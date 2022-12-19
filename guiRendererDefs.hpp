@@ -3,9 +3,37 @@
 
 #include <SDL2/SDL_ttf.h> 
 #include "renderer.hpp"
-
 #include "GUIRenderer.h"
 namespace UI {
+	void GUIRenderer::RenderAnyUpdate() {
+		_element_arr.shrink_to_fit();
+		for (ui_elem_offset = 0; ui_elem_offset < _element_arr.size(); ui_elem_offset++) {
+			std::any* tx_elem = _element_arr.at(ui_elem_offset);
+			if (!tx_elem) {
+				_element_arr.erase(_element_arr.begin() + ui_elem_offset);
+				// Will shrink vector next frame.
+				continue;
+			}
+			if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
+				TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
+				if (!_e->enabled || !_e->__render_on_update) { continue; }
+				_e->Render();
+				continue;
+			}
+			if (alib_costr(tx_elem->type().name(), "UI::ButtonElement *")) {
+				ButtonElement* _e = std::any_cast<ButtonElement*>(*tx_elem);
+				if (!_e->enabled || !_e->__render_on_update) { continue; }
+				_e->Render();
+				continue;
+			}
+			if (alib_costr(tx_elem->type().name(), "UI::ImageElement *")) {
+				ImageElement* _e = std::any_cast<ImageElement*>(*tx_elem);
+				if (!_e->enabled || !_e->__render_on_update) { continue; }
+				_e->Render();
+				continue;
+			}
+		}
+	}
 	void GUIRenderer::Render()
 	{
 		_element_arr.shrink_to_fit();
@@ -18,19 +46,19 @@ namespace UI {
 			}
 			if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
 				TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
-				if (!_e->enabled) { continue; }
+				if (!_e->enabled || _e->__render_on_update) { continue; }
 				_e->Render();
 				continue;
 			}
 			if (alib_costr(tx_elem->type().name(), "UI::ButtonElement *")) {
 				ButtonElement* _e = std::any_cast<ButtonElement*>(*tx_elem);
-				if (!_e->enabled) { continue; }
+				if (!_e->enabled || _e->__render_on_update) { continue; }
 				_e->Render();
 				continue;
 			}
 			if (alib_costr(tx_elem->type().name(), "UI::ImageElement *")) {
 				ImageElement* _e = std::any_cast<ImageElement*>(*tx_elem);
-				if (!_e->enabled) { continue; }
+				if (!_e->enabled || _e->__render_on_update) { continue; }
 				_e->Render();
 				continue;
 			}
@@ -42,7 +70,7 @@ namespace UI {
 
 		ImGui::Begin(_fmt_name().c_str(), 0, GUIRenderer::__elementWinFlags);
 		ImGui::SetWindowFontScale(this->size);
-		ImGui::TextColouredUnformatted(this->text.c_str());
+		ImGui::TextMulticolored(this->text.c_str());
 		ImGui::End();
 	}
 	TextElement::TextElement() {
@@ -76,7 +104,7 @@ namespace UI {
 		ImGui::SameLine();
 		ImGui::SetCursorPosX(this->pos.x + _v.x / 2);
 		ImGui::SetWindowFontScale(this->size);
-		ImGui::TextColouredUnformatted(this->text.c_str());
+		ImGui::TextMulticolored(this->text.c_str());
 		if (this->buttonFlags & ButtonElementFlags::NoBackground) {
 			ImGui::PopStyleColor(3);
 		}

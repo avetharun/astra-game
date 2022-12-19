@@ -14,12 +14,27 @@
 enum _collLayers : int{
 	COL_EMPTY =			B8(00000001),
 	COL_PLAYER =		B8(00000010),
+	COL_CENTER =		B8(00000100),
+	COL_STATIC =		B8(00000100),
 	COL_ENT =			B8(00001000),
 	COL_OBJ =			B8(00010000),
 	COL_TRG =			B8(00100000),
 	COL_SOLID =			B8(01000000),
 	COL_FUNC =			B8(10000000)
 };
+const int hrtocol(std::string id) {
+
+	if (alib_streq(id, "COL_ENT")) { return COL_ENT; }
+	if (alib_streq(id, "COL_OBJ")) { return COL_OBJ; }
+	if (alib_streq(id, "COL_TRG")) { return COL_TRG; }
+	if (alib_streq(id, "COL_SOLID")) { return COL_SOLID; }
+	if (alib_streq(id, "COL_CENTER")) { return COL_CENTER; }
+	if (alib_streq(id, "COL_STATIC")) { return COL_STATIC; }
+	if (alib_streq(id, "COL_FUNC")) { return COL_FUNC; }
+	if (alib_streq(id, "COL_PLAYER")) { return COL_PLAYER; }
+	if (alib_streq(id, "COL_EMPTY")) { return COL_EMPTY; }
+	return COL_SOLID;
+}
 const char* coltohr(unsigned char id) {
 	switch (id) {
 	default:
@@ -37,21 +52,25 @@ const char* coltohr(unsigned char id) {
 		return "COL_SOLID";
 	case COL_FUNC:
 		return "COL_FUNC";
+	case COL_CENTER:
+		return "COL_CENTER";
 	}
 }
 #include <chrono>
-struct MeshCollider2d;
+struct MeshCollider2d; struct RectCollider2d;
+bool __phys_is_debug;
 SDL_Renderer* __phys_internal_renderer;
 void initRenderer__PHYS(SDL_Renderer* r) { __phys_internal_renderer = r; }
 
 
 struct MeshLine {
+	bool is_editing = false;
 	static SDL_Rect bounding_boxi(int sx, int sy, int ex, int ey) { 
 		VectorRect _r = {
-			alib_min(sx, ex),
-			alib_min(sy, ey),
-			abs(ex - sx),
-			abs(ey - sy)
+			alib_min(sx, ex) - 2,
+			alib_min(sy, ey) - 2,
+			alib_max(4,abs(ex - sx)),
+			alib_max(4,abs(ey - sy))
 		};
 		_r.scale(2);
 		return {
@@ -61,9 +80,18 @@ struct MeshLine {
 	static SDL_Rect bounding_box(MeshLine m) {
 		return bounding_boxi(m.start.x, m.start.y, m.end.x, m.end.y);
 	}
+	
 	Vector2 start = {};
 	Vector2 end = {};
+	Vector2 midpoint() {
+		return { (start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f };
+	}
+	static Vector2 midpoint(Vector2 s, Vector2 e) {
+		return { (s.x + e.x) * 0.5f, (s.y + e.y) * 0.5f };
+	}
 	int layer = COL_EMPTY;
+	std::string id = "";
+	static inline const int ID_LENGTH = 48;
 	int coll_id = 0;
 	static MeshLine* lu_new(double x1, double y1, double x2, double y2, int _layer) {
 		MeshLine* _m = new MeshLine();
@@ -80,6 +108,7 @@ struct MeshLine {
 		this->start = { x1, y1 };
 		this->end = { x2, y2 };
 	}
+
 	Vector2* lu_getStart() { return this->start.lu_get(); }
 	Vector2* lu_getEnd() { return this->end.lu_get(); }
 	int* lu_getLayer() { return &this->layer; }
@@ -88,8 +117,8 @@ struct MeshLine {
 	void lu_setLayer(unsigned char _l) { this->layer = _l; }
 	void lu_setStart(Vector2 _start) { this->start = _start; }
 	void lu_setEnd(Vector2 _end) { this->end = _end; }
-	void setFreestanding();
-	void eraseFreestanding();
+	void set_freestanding();
+	void erase_freestanding();
 	void __gc() {
 		
 	}
@@ -112,9 +141,6 @@ struct MeshCollider2d {
 Amount of elements: %zi
 Memory allocated: %zi bytes
 )", lu_gsz(), (lu_gsz() * sizeof(MeshCollider2d)));
-	}
-	std::vector<MeshLine*>* lu_getLines() {
-		return &lines;
 	}
 	void c_collider_hit(MeshLine* o) {
 		//if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
@@ -140,33 +166,33 @@ Memory allocated: %zi bytes
 		return _this;
 	}
 	void operator ~() {
-		auto position = std::find(_mGlobalColArr.begin(), _mGlobalColArr.end(), this);
-		if (position != _mGlobalColArr.end()) // Make sure it exists first!
-			_mGlobalColArr.erase(position); // Remove the collider from global array.
-		_mGlobalColArr.shrink_to_fit();
-		lines.clear();
+		alib_remove_any_of(_mGlobalColArr, this);
 	}
 	void free() { ~*this; }
 };
 std::vector<MeshCollider2d*> MeshCollider2d::_mGlobalColArr = std::vector<MeshCollider2d*>();
 MeshCollider2d* MeshCollider2d::freestandingLinesMesh = new MeshCollider2d();
 
-void MeshLine::setFreestanding() { 
+void MeshLine::set_freestanding() { 
 	if (MeshCollider2d::freestandingLinesMesh->lines.size() >= 6000) {
 		printf("Standalone lines are slow, please consider creating a mesh collider instead!");
 	}
 	MeshCollider2d::freestandingLinesMesh->lines.push_back(this); 
 }
-void MeshLine::eraseFreestanding() {
+void MeshLine::erase_freestanding() {
 	alib_remove_any_of(MeshCollider2d::freestandingLinesMesh->lines, this);
 }
 
 struct RectCollider2d {
+	bool centered = false;
 	bool isCWLScriptable = false;
 	int layer = -1;
 	uint64_t coll_id;
-	SDL_Rect* rect_cs = new SDL_Rect();
+	SDL_Rect* ws_rect = new SDL_Rect();
 	SDL_Rect* rect = new SDL_Rect();
+
+	std::string id = "";
+	static inline const int ID_LENGTH = 48;
 
 	SDL_Rect* lu_getRect() {
 		return rect;
@@ -177,7 +203,7 @@ struct RectCollider2d {
 --RectCollider2d--
 Amount of elements: %zi
 Memory allocated: %zi bytes
-)", lu_gsz(), (lu_gsz() * sizeof(MeshCollider2d)));
+)", lu_gsz(), (lu_gsz() * sizeof(RectCollider2d)));
 	}
 	int lu_gx() {return this->rect->x;}
 	int lu_gy() {return this->rect->y;}
@@ -189,18 +215,30 @@ Memory allocated: %zi bytes
 	int lu_sw(int v) {this->rect->w=v;}
 	int lu_sh(int v) {this->rect->h=v;}
 
-	void recalc() {
-		if (Camera::GetInstance()->m_target == nullptr) { return; } // Camera hasn't been put to a target. It'll inherit world space until it does.
-		this->rect_cs->x = this->rect->x + -Camera::GetInstance()->m_target->x;
-		this->rect_cs->y = this->rect->y + -Camera::GetInstance()->m_target->y;
+	static SDL_Rect recalc(RectCollider2d out) {
+		if (Camera::GetInstance()->m_target == nullptr) { return *out.rect; } // Camera hasn't been put to a target. It'll inherit world space until it does.
+		SDL_Rect m_out{0,0,out.ws_rect->w, out.ws_rect->h};
+		if (out.centered || out.layer == COL_CENTER) {
+			m_out.x = ((int)( ( Camera::GetInstance()->m_Viewport.x * 0.5f) - (out.ws_rect->w * 0.5f)) + Camera::GetInstance()->m_Offset.x);
+			m_out.y = ((int)( ( Camera::GetInstance()->m_Viewport.y * 0.5f) - (out.ws_rect->h * 0.5f)) + Camera::GetInstance()->m_Offset.y);
+		}
+		else {
+			m_out.x = -Camera::GetInstance()->m_target->x + Camera::GetInstance()->m_Offset.x + out.ws_rect->x;
+			m_out.y = -Camera::GetInstance()->m_target->y + Camera::GetInstance()->m_Offset.y + out.ws_rect->y;
+		}
+		return m_out;
 	}
+	static std::function< void(RectCollider2d*, RectCollider2d*) > OnColliderHit;
+	static std::function< void(RectCollider2d*, MeshLine*) > OnLineHit;
 
-	std::function< void(RectCollider2d*) > OnColliderHit = [](RectCollider2d* other) {};
+	void recalc() {
+		*this->rect = recalc(*this);
+	}
 
 	static RectCollider2d* lu_new_fromr(VectorRect r, int __layer) {
 		RectCollider2d* r_re = new RectCollider2d();
 		*r_re->rect = { (int)r.x, (int)r.y, (int)r.w, (int)r.h };
-		*r_re->rect_cs = { (int)r.x, (int)r.y, (int)r.w, (int)r.h };
+		*r_re->ws_rect = { (int)r.x, (int)r.y, (int)r.w, (int)r.h };
 		r_re->recalc();
 		r_re->layer = __layer;
 		return r_re;
@@ -208,23 +246,33 @@ Memory allocated: %zi bytes
 	static RectCollider2d* lu_new_fromi(int x, int y, int w, int h, int __layer) {
 		RectCollider2d* r_re = new RectCollider2d();
 		*r_re->rect = { x, y, w, h };
-		*r_re->rect_cs = { x, y, w, h };
+		*r_re->ws_rect = { x, y, w, h };
 		r_re->recalc();
 		r_re->layer = __layer;
 		return r_re;
 	}
 
+	static RectCollider2d* lu_new_fromic(int x, int y, int w, int h, int __layer) {
+		RectCollider2d* r_re = new RectCollider2d();
+		*r_re->rect = { x, y, w, h };
+		*r_re->ws_rect = { x, y, w, h };
+		r_re->recalc();
+		r_re->layer = __layer;
+		r_re->centered = true;
+		return r_re;
+	}
+
 	void c_collider_hit(RectCollider2d* o) {
 		//if (SUCCEEDED(&lua_colhit)) { lua_colhit.execute(o); }
-		OnColliderHit(o);
+		OnColliderHit(this, o);
 	}
 
 	static std::vector<RectCollider2d*> _mGlobalColArr;
 	RectCollider2d(SDL_Rect* Rect, int Layer = 1) {
 		*rect = { Rect->x, Rect->y, Rect->w, Rect->h };
-		*rect_cs = {Rect->x, Rect->y, Rect->w, Rect->h};
-		if (rect_cs == nullptr) {
-			rect_cs = new SDL_Rect();
+		*ws_rect = {Rect->x, Rect->y, Rect->w, Rect->h};
+		if (ws_rect == nullptr) {
+			ws_rect = new SDL_Rect();
 		}
 		if (rect == nullptr) {
 			rect = new SDL_Rect();
@@ -272,17 +320,15 @@ struct Raycast2D {
 		return SDL_IntersectRect(r1, r2, &_r);
 	}
 	struct RaycastHit {
-		Vector2 pos;
-		void* object;
-		Vector2 start;
-		Vector2 end;
-		float length;
-		bool hasHit = false;
-		operator bool() {
-			return hasHit;
-		}
+		static inline Vector2 pos = {};
+		static inline void* object = nullptr;
+		static inline Vector2 start = {};
+		static inline Vector2 end = {};
+		static inline float length = 0;
+		static inline bool hasHit = false;
+		static inline std::string col_id = "";
+		static inline int layer = 0;
 	}; 
-	static inline RaycastHit hit{};
 
 	/* \brief Check if point (pos) is in rect (&rect)*/
 	static bool pointRect(SDL_Rect* rect, Vector2 pos)
@@ -331,7 +377,7 @@ private:
 			// set hit.pos to where line hit
 			float intersectionX = x1 + (uA * (x2 - x1));
 			float intersectionY = y1 + (uA * (y2 - y1));
-			hit.pos = Vector2(intersectionX, intersectionY);
+			RaycastHit::pos = Vector2(intersectionX, intersectionY);
 			return true;
 		}
 		return false;
@@ -346,24 +392,25 @@ public:
 	/** \brief Test to see if line hits. 
 	*/
 	static bool Test(Vector2 start, Vector2 end, int layer) {
-		hit.hasHit = false;
-		SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
-		SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
-		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !hit.hasHit; i++) {
-			if (RectCollider2d::_mGlobalColArr[i]->layer & layer || layer == -1) {
-				RectCollider2d::_mGlobalColArr[i]->recalc();
+		RaycastHit::hasHit = false;
+		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
+		//SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
+		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !RaycastHit::hasHit; i++) {
+			RectCollider2d* _thiscol = RectCollider2d::_mGlobalColArr[i];
+			if (_thiscol->layer& layer || layer == -1){
+				_thiscol->recalc();
 				//printf("Calculating rect with collider type %s : %d\n", coltohr(RectCollider2d::_mGlobalColArr[i]->layer), i);
-				SDL_Rect* r = RectCollider2d::_mGlobalColArr[i]->rect_cs;
-				//SDL_Rect lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
-				//if (!VectorRect::checkCollision(r, &lr)) { continue; }
-
+				SDL_Rect* r = _thiscol->rect;
+				SDL_Rect lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
 				bool o = lineRect(start, end, r);
 				if (o) {
-					hit.object = RectCollider2d::_mGlobalColArr[i];
-					hit.start = start;
-					hit.end = end;
-					hit.hasHit = true;
-					break;
+					RaycastHit::object = _thiscol;
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = _thiscol->id;
+					RaycastHit::layer = _thiscol->layer;
+					return true;
 				}
 			}
 		}
@@ -374,96 +421,135 @@ public:
 				if (!(l.layer & layer) && (layer != -1)) {
 					continue;
 				}
-
-				
-				Vector2 s = l.start + -*Camera::GetInstance()->m_target;
-				Vector2 e = l.end  + -*Camera::GetInstance()->m_target;
+				Vector2 s = l.start - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				Vector2 e = l.end - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
 				SDL_Rect lr = MeshLine::bounding_boxi(s.x, s.y, e.x, e.y );
 				SDL_Rect c_lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 255, 255, 32);
-				//SDL_RenderDrawRect(__phys_internal_renderer, &lr);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 128, 32);
-				//SDL_RenderDrawRect(__phys_internal_renderer, &c_lr);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 255, 128);
-				//SDL_RenderDrawLine(__phys_internal_renderer, s.x, s.y, e.x, e.y);
-				// if the requested lines bounding boxes don't intersect, ignore.
+				if (__phys_is_debug) {
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 255, 255, 32);
+					SDL_RenderDrawRect(__phys_internal_renderer, &lr);
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 128, 32);
+					SDL_RenderDrawRect(__phys_internal_renderer, &c_lr);
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 255, 128);
+					SDL_RenderDrawLine(__phys_internal_renderer, s.x, s.y, e.x, e.y);
+				}
 				if (!VectorRect::checkCollision(&c_lr, &lr)) { continue; }
 				
 				bool o = TestLineImplV(start, end, s, e);
 				if (o) {
-					hit.object = MeshCollider2d::_mGlobalColArr[li];
-					hit.start = start;
-					hit.end = end;
-					hit.hasHit = true; 
-					break;
+					RaycastHit::object = MeshCollider2d::_mGlobalColArr[li];
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = l.id;
+					RaycastHit::layer = l.layer;
+					return true;
 				}
 			}
 		}
-		return hit.hasHit;
+		return false;
 	};
-	/** \brief Test to see if line hits. */
-	static bool TestRelative(Vector2 start, Vector2 offset, Vector length, int layer) {
-		hit.hasHit = false;
-		Vector2 end = (start.x <= 0 || start.y <= 0) ?
-			(offset * length) :
-			(offset * -length)
-			+ start + offset;
+	static bool TestRect(Vector2 start, Vector2 end, int layer) {
+		RaycastHit::hasHit = false;
+		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
+		//SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
+		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !RaycastHit::hasHit; i++) {
+			RectCollider2d* _thiscol = RectCollider2d::_mGlobalColArr[i];
+			if (_thiscol->layer & layer || layer == -1) {
+				_thiscol->recalc();
+				//printf("Calculating rect with collider type %s : %d\n", coltohr(RectCollider2d::_mGlobalColArr[i]->layer), i);
+				SDL_Rect* r = _thiscol->ws_rect;
+				SDL_Rect lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
+				bool o = RectIntersects(r, &lr);
+				if (o) {
+					RaycastHit::object = _thiscol;
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = _thiscol->id;
+					RaycastHit::layer = _thiscol->layer;
+					return true;
+				}
+			}
+		}
 		for (unsigned int li = 0; li < MeshCollider2d::_mGlobalColArr.size(); li++) {
 			MeshCollider2d* m = MeshCollider2d::_mGlobalColArr[li];
 			for (size_t lo = 0; lo < m->lines.size(); lo++) {
 				MeshLine l = *m->lines[lo];
-				if (Vector2::distance(l.start, start) > 720) {}
 				if (!(l.layer & layer) && (layer != -1)) {
 					continue;
 				}
-				Vector2 s = l.start + -*Camera::GetInstance()->m_target;
-				Vector2 e = l.end + -*Camera::GetInstance()->m_target;
-
-
+				Vector2 s = l.start - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				Vector2 e = l.end - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
 				SDL_Rect lr = MeshLine::bounding_boxi(s.x, s.y, e.x, e.y);
 				SDL_Rect c_lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 128, 128, 32);
-				//SDL_RenderDrawRect(__phys_internal_renderer, &lr);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 128, 32);
-				//SDL_RenderDrawRect(__phys_internal_renderer, &c_lr);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 255, 128);
-				//SDL_RenderDrawLine(__phys_internal_renderer, s.x, s.y, e.x, e.y);
-				//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
-				//SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
-				if (!VectorRect::checkCollision(&c_lr, &lr)) { continue; }
 
-
-				bool o = TestLineImplV(start, end, s, e);
+				bool o = VectorRect::checkCollision(&c_lr, &lr);
 				if (o) {
-					hit.object = MeshCollider2d::_mGlobalColArr[li];
-					hit.start = start;
-					hit.end = end;
-					hit.hasHit = true;
-					break;
+					RaycastHit::object = MeshCollider2d::_mGlobalColArr[li];
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = l.id;
+					RaycastHit::layer = l.layer;
+					return true;
 				}
 			}
 		}
-		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !hit.hasHit; i++) {
-			if (RectCollider2d::_mGlobalColArr[i]->layer == layer || layer == -1) {
-				bool o = lineRect(start, end, RectCollider2d::_mGlobalColArr[i]->rect_cs);
+		return false;
+	};
+	static bool TestRectExcept(SDL_Rect* rect, int layer, RectCollider2d* ignored_col) {
+		RaycastHit::hasHit = false;
+		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
+		//SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
+		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !RaycastHit::hasHit; i++) {
+			RectCollider2d* _thiscol = RectCollider2d::_mGlobalColArr[i];
+			if (ignored_col == _thiscol) { continue; }
+			if (_thiscol->layer & layer || layer == -1) {
+				_thiscol->recalc();
+				//printf("Calculating rect with collider type %s : %d\n", coltohr(RectCollider2d::_mGlobalColArr[i]->layer), i);
+				bool o = RectIntersects(_thiscol->rect,rect);
 				if (o) {
-					hit.object = RectCollider2d::_mGlobalColArr[i];
-					hit.start = start;
-					hit.end = end;
-					hit.hasHit = true;
-					break;
+					RaycastHit::object = _thiscol;
+					RaycastHit::hasHit = true;
+					RaycastHit::start = { (Vector)_thiscol->rect->x, (Vector)_thiscol->rect->y};
+					RaycastHit::end = RaycastHit::start + Vector2{ (Vector)_thiscol->rect->w, (Vector)_thiscol->rect->h};
+					RaycastHit::col_id = _thiscol->id;
+					RaycastHit::layer = _thiscol->layer;
+					return true;
 				}
 			}
 		}
-		return hit.hasHit;
-	}; 
+		for (unsigned int li = 0; li < MeshCollider2d::_mGlobalColArr.size(); li++) {
+			MeshCollider2d* m = MeshCollider2d::_mGlobalColArr[li];
+			for (size_t lo = 0; lo < m->lines.size(); lo++) {
+				MeshLine l = *m->lines[lo];
+				if (!(l.layer & layer) && (layer != -1)) {
+					continue;
+				}
+				Vector2 s = l.start - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				Vector2 e = l.end - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				SDL_Rect lr = MeshLine::bounding_boxi(s.x, s.y, e.x, e.y);
 
+				bool o = lineRect(s,e,rect);
+				if (o) {
+					RaycastHit::object = MeshCollider2d::_mGlobalColArr[li];
+					RaycastHit::start = e;
+					RaycastHit::end = s;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = l.id;
+					RaycastHit::layer = l.layer;
+					return true;
+				}
+			}
+		}
+		return false;
+	};
 	static bool TestCircle(Vector2 start, int diameter, int layer) {
 		for (float a = 0; a < 360; a+=(360.0f/ diameter) / 512.0f) {
 			Vector2 i(
-				// multiply angle by 57.296*f (see https://www.desmos.com/calculator/bjtb0ojtqk for an explanation)
-				start.x + (diameter * cos(a / 57.296f)),
-				start.y + (diameter * sin(a / 57.296f))
+				start.x + (diameter * cos(a * alib_rad2deg)),
+				start.y + (diameter * sin(a * alib_rad2deg))
 			);
 			if (Test(start, i, layer)) {
 				return true;
@@ -474,9 +560,8 @@ public:
 	static bool TestCone(Vector2 start, int angle, int offset, int dist, int layer) {
 		for (float a = 0 - angle+offset; a < angle+offset; a+= (360.0f + angle + offset) / 512.0f) {
 			Vector2 i(
-				// divide angle by 57.296*f in sin-cos functions. (see https://www.desmos.com/calculator/jgv7e1ecut for an explanation)
-				start.x+(dist*cos(a / 57.296f)),
-				start.y+(dist*sin(a / 57.296f))
+				start.x+(dist*cos(a * alib_rad2deg)),
+				start.y+(dist*sin(a * alib_rad2deg))
 			);
 			if (Test(start, i, layer)) {
 				return true;

@@ -1,9 +1,11 @@
-#ifndef __cw_vector_hpp
+﻿#ifndef __cw_vector_hpp
 #define __cw_vector_hpp
 #include <nlohmann/json/json.hpp>
 #include <iostream>
 #include <glm/glm.hpp>
 #include "LUA_INCLUDE.h"
+#include "utils.hpp"
+#include "imgui/imgui.h"
 //typedef int Vector;
 
 using json = nlohmann::json;
@@ -135,6 +137,15 @@ struct Vector2 {
 	}
 	Vector luaL_getx() { return x; }
 	Vector luaL_gety() { return y; }
+	Vector2 luaL__add(Vector2 rhs) { return *this + rhs; }
+	Vector2 luaL__sub(Vector2 rhs) { return *this - rhs; }
+	Vector2 luaL__mul(Vector2 rhs) { return *this * rhs; }
+	Vector2 luaL__div(Vector2 rhs) { return *this / rhs; }
+	bool luaL__eq(Vector2 rhs) { return (* this == rhs); }
+	bool luaL__lt(Vector2 rhs) { return (*this < rhs); }
+	bool luaL__le(Vector2 rhs) { return (*this <= rhs); }
+	Vector2 luaL__unm() { return -*this; }
+
 	static Vector2 up;
 	static Vector2 right;
 	friend std::ostream& operator<<(std::ostream& os, const Vector2& o)
@@ -149,8 +160,46 @@ struct Vector2 {
 		return x.c_str();
 	}
 	operator SDL_Point () { return {(int)x,(int)y}; }
+	operator ImVec2 () { return { (float)x,(float)y }; }
 	static Vector2 distance(Vector2 one, Vector2 two) {
 		return one - two;
+	}
+	Vector magnitude() { return sqrt((x * x) + (y * y)); }
+	Vector2 normalize() {
+		float mag = magnitude();
+		if (mag > 0.001f)
+			return *this / mag;
+		else
+			return {0,0};
+	}
+	static double cross(Vector2 lhs, Vector2 rhs) {
+		return (lhs.x * rhs.y) - (lhs.y * rhs.x);
+	}
+	static double dot(Vector2 lhs, Vector2 rhs) { return lhs.x * rhs.x + lhs.y * rhs.y; }
+	static float angle(Vector2 lhs, Vector2 rhs) {
+		// sqrt(a) * sqrt(b) = sqrt(a * b) -- valid for real numbers
+		double denominator = (float)sqrt(lhs.magnitude() * rhs.magnitude());
+		if (denominator < 1e-15F)
+			return 0.0f;
+
+		double dot__ = alib_clamp(dot(lhs, rhs) / denominator, -1.0, 1.0);
+		return acos(dot__) * alib_rad2deg;
+	}
+	Vector2 clamp_magnitude(double maxLength) {
+		double sqrmag = sqrt(this->magnitude());
+		if (sqrmag > maxLength * maxLength)
+		{
+			float mag = (float)sqrt(sqrmag);
+			//these intermediate variables force the intermediate result to be
+			//of float precision. without this, the intermediate result can be of higher
+			//precision, which changes behavior.
+			float normalized_x = x / mag;
+			float normalized_y = y / mag;
+			return { normalized_x * maxLength,
+				normalized_y * maxLength,
+			};
+		}
+		return *this;
 	}
 	void operator ~() {
 		delete[] this;
@@ -194,6 +243,11 @@ struct VectorRect {
 	Vector gy() { return this->y; }
 	Vector gw() { return this->w; }
 	Vector gh() { return this->h; }
+	
+	Vector2 gsz() { return {this->w, this->h}; }
+	Vector2 gpos() { return { this->w, this->h }; }
+	Vector2 spos(Vector2 __pos) { this->x = __pos.x; this->y = __pos.y; }
+	Vector2 ssz(Vector2 __siz) { this->w = __siz.x; this->h = __siz.y; }
 	// Subtract sub from dst, and put the result in dst
 	static void SubRectI(SDL_Rect* dst, SDL_Rect* sub) {
 		dst->x -= sub->x;
@@ -287,17 +341,15 @@ struct VectorRect {
 		return(midPoint);
 	}
 	void scale(double amount) {
-		double mx = x + 0.5 * w;
-		double my = y + 0.5 * h;
+		Vector2 _mp = this->middle_point();
 
 		w = amount * w;
 		h = amount * h;
-
-		// Mid point remains exactly at the same location.
-		// Move the lower left corner so that it is offset from
-		// the mid point by half the length and half the width.
-		x = (mx - 0.5 * w);
-		y = (my - 0.5 * h);
+		// make sure width/height is non-zero, as collision will fail if it is.
+		if (w == 0) { w = 1; }
+		if (h == 0) { h = 1; }
+		x = (_mp.x - 0.5 * w);
+		y = (_mp.y - 0.5 * h);
 	}
 };
 SDL_Rect VectorRect::_emptyRect = SDL_Rect{ 0, 0, 0, 0 };

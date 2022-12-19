@@ -12,6 +12,7 @@ Window* Window::WindowInstance = new Window(::GetConsoleWindow(), false, "\0", W
 Window* window = Window::WindowInstance;
 
 
+#include "imgui/imgui_format.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_sdlrenderer.h"
@@ -21,33 +22,104 @@ Window* window = Window::WindowInstance;
 #endif
 #include "cw_lua_interp.hpp"
 #include "lua.hpp"
+
+#include "editor.h"
+
 bool debug_draw_line_bounds = false;
 bool debug_draw_line_overlay = true;
 /* Player initializer function  */
 UI::TextElement fps_tx = UI::TextElement();
-UI::ImageElement __img_el = UI::ImageElement("sprites/test.png");
 // which seems to be caused by this ^
-ImGui::Colour _c = ImGui::Colour(32, 32, 255);
-const char* col = _c.tostring();
+ImRGB _c = ImRGB(32, 32, 255);
+std::string col = _c.tostring();
 Window::Initializer __init_window_f{
 	[]() {
-		__img_el.enabled = true;
-		__img_el.transform.position = {128,128};
-		__img_el.transform.scale = {512,512};
 		alib_assert_p(!&__lu_component_impl, "LUA Component Manager not initialized, unable to run!");
 		Window::WindowInstance->AddComponent(&__lu_component_impl);
-		alib_show_console();
-		if (NDEBUG) { alib_hide_console(); }
+		SDL_MaximizeWindow(Window::WindowInstance->SDL_WIND);
 		cwError::onError = [](const char* errv, uint32_t errs) {
 			if (errs == cwError::CW_NONE) {
 				Win->cons.pushf("%s\n", errv);
 				return;
 			}
 			else {
-				Win->cons.pushf("%s|%s\n", cwError::wtoh(errs), errv);
+				const char* errn = cwError::wtoh(errs);
+				Win->cons.pushf("%s|%s\n", errn, errv);
 			}
 		};
+		// init fonts
 
+
+
+
+		Win->cons.commands.insert({ "cw_edit", [&](const char* _args) {
+			std::vector<std::string> _argsv;
+			alib_split_quoted(_args, &_argsv);
+				if (_argsv.size() >= 1) {
+					bool __state_old = getbitv(Window::WindowInstance->data, 8);
+					bool __state = alib_atob(_argsv.at(0).c_str());
+					setbitv(Window::WindowInstance->data, 8, __state);
+					if (__state != __state_old) {
+						if (__state) {
+							SDL_SetWindowResizable(Window::WindowInstance->SDL_WIND, SDL_FALSE);
+							SDL_MaximizeWindow(Window::WindowInstance->SDL_WIND);
+							Window::WindowInstance->scene->editor_loaded = true;
+						}
+						else {
+							Camera::GetInstance()->scale = 1.0f;
+							SDL_SetWindowResizable(Window::WindowInstance->SDL_WIND, SDL_TRUE);
+						}
+					}
+				}
+			}
+			});
+
+		Win->cons.commands.insert({ "cw_save", [&](const char* _args) {
+			if (Win->scene) {
+				Window::WindowInstance->scene->Save();
+				cwError::serrof("Saved!");
+			}
+			else {
+				cwError::serrof("Unable to save, no scene loaded!");
+			}
+		} });
+		Win->cons.commands.insert({ "cw_unload", [&](const char* _args) {
+			if (Win->scene) {
+				Window::WindowInstance->scene->Discard();
+				Window::WindowInstance->scene = nullptr;
+			}
+		} });
+		Win->cons.commands.insert({ "cw_load", [&](std::string args) {
+				if (!alib_endswith(args.c_str(), ".cwl")) {
+					args.append(".cwl");
+				}
+				if (alib_file_exists(("maps/" + args).c_str())) {
+					args = "maps/"+args;
+				}
+				if (alib_file_exists(args.c_str())) {
+					if (Win->scene != nullptr) {
+						Win->scene->Discard();
+					}
+					Window::WindowInstance->scene = new cwLayout(args.c_str());
+					Window::WindowInstance->scene->dtor = []() {__lu_on_interact_funcs.clear(); };
+				}
+				else {
+					Win->cons.pushuf("this requires an existing file!");
+				}
+			} });
+
+		Win->cons.commands.insert({ "cw_reload", [&](std::string args) {
+			if (Win->scene) {
+				Win->cons.pushf("Reloading scene %s", Win->scene->name.c_str());
+				std::string cwlSceneName = Win->scene->name;
+				Win->scene->Discard();
+				Win->scene = new cwLayout(cwlSceneName.c_str());
+				Window::WindowInstance->scene->dtor = []() {__lu_on_interact_funcs.clear(); };
+			}
+			else {
+				Win->cons.pushf("No scene loaded. Load a scene with cw_load <name>");
+			}
+		} });
 
 		Win->cons.commands.insert({ "cl_debug", [&](const char* _args) {
 			std::vector<std::string> _argsv;
@@ -58,63 +130,31 @@ Window::Initializer __init_window_f{
 			}
 			} 
 		});
-		Win->cons.commands.insert({ "r_line_bounds", [&](const char* _args) {
+		Win->cons.commands.insert({ "cl_pos", [&](const char* _args) {
+			Win->cons.pushlnf("Player position: %.2f, %.2f", Camera::GetInstance()->m_target->x, Camera::GetInstance()->m_target->y);
+		} });
+		Win->cons.commands.insert({ "r_fullbright", [&](const char* _args) {
 			std::vector<std::string> _argsv;
 			alib_split_quoted(_args, &_argsv);
-			if (_argsv.size() >= 1) {
-				debug_draw_line_bounds = atoi(_argsv.at(0).c_str());
-			}
+				if (_argsv.size() >= 1) {
+					setbitv(Window::WindowInstance->data, 1, alib_atob(_argsv.at(0).c_str()));
+				}
 			}
 		});
-		Win->cons.commands.insert({ "r_line_overlay", [&](const char* _args) {
+		Win->cons.commands.insert({ "r_overlay", [&](const char* _args) {
 			std::vector<std::string> _argsv;
 			alib_split_quoted(_args, &_argsv);
-			if (_argsv.size() >= 1) {
-				debug_draw_line_overlay = atoi(_argsv.at(0).c_str());
-			}
+				if (_argsv.size() >= 1) {
+					setbitv(Window::WindowInstance->data, 2, alib_atob(_argsv.at(0).c_str()));
+				}
 			}
 		});
-		Win->cons.commands.insert({ "cw", [&](const char* arg) {
-			std::vector<std::string> argv{};
-			alib_split_quoted(arg, & argv);
-			size_t argc = argv.size();
-			if (argc == 0) { return; }
-			for (size_t i = 1; i < argc; i++) {
-				// Win->cons.pushf("Arg: %s at %zi", argv[i].c_str(), i);
-			}
-			if (argv.at(0) == "unload") {
-				if (SUCCEEDED(Win->scene)) {
-					Win->scene->Discard();
-					Win->cons.pushuf("Unloaded.");
+		Win->cons.commands.insert({ "r_debug", [&](const char* _args) {
+			std::vector<std::string> _argsv;
+			alib_split_quoted(_args, &_argsv);
+				if (_argsv.size() >= 1) {
+					__phys_is_debug = alib_atob(_argsv.at(0).c_str());
 				}
-			}
-			if (argv.at(0) == "load") {
-				if (argc < 1) {
-					Win->cons.pushuf("cw load requires a scene name!");
-					return;
-				}
-				if (!alib_endswith(argv.at(1).c_str(), ".cwl")) {
-					argv.at(1).append(".cwl");
-				}
-				if (alib_file_exists(argv.at(1).c_str())) {
-					if (Win->scene != nullptr) {
-						Win->scene->Discard();
-					}
-					Window::WindowInstance->scene = new cwLayout(argv.at(1).c_str());
-				}
-				else {
-					Win->cons.pushuf("cw load requires a existing file!");
-				}
-			}
-			if (argv.at(0) == "reload") {
-				if (Win->scene == nullptr || !SUCCEEDED(Win->scene)) {
-					return;
-				}
-				Win->cons.pushf("Reloading scene %s", Win->scene->name.c_str());
-				std::string cwlSceneName = Win->scene->name;
-				Win->scene->Discard();
-				Win->scene = new cwLayout(cwlSceneName.c_str());
-			}
 			}
 		});
 		Win->cons.commands.insert({ "exec", [&](const char* arg) {
@@ -153,22 +193,6 @@ Window::Initializer __init_window_f{
 
 
 
-
-#pragma endregion
-#pragma region ObjectCode
-
-Window::Component boxObject;
-Window::Initializer _nn{
-	[]() {
-		boxObject.Update = [](){
-			//world.Draw();
-		};
-		Win->AddComponent(&boxObject);
-	}
-};
-
-
-#pragma endregion
 #pragma region WindowScriptable
 
 
@@ -177,9 +201,9 @@ Window::Initializer _nn{
 	[]() /*  Window functions  */ {
 		/*
 		* bit 1: debug
-		* 
-		* 
-		* 
+		*
+		*
+		*
 		*/
 		Win->Start = []() {
 			initDataLua(Win->SDL_REND, Win->SDL_WIND, &Time::DeltaTime, &Time::DeltaTimeScale, &Time::DeltaTimeUnscaled, &Time::fps);
@@ -197,7 +221,16 @@ Window::Initializer _nn{
 					}
 					Window::WindowInstance->scene = new cwLayout("main.cwl");
 				}
+
+			int status_global = luaL_dofile(state, "lib/lua/global.lua");
+			if (status_global) {
+				int parseError1_pos = lua_gettop(state);
+				std::cout << "Errors parsing the global autoexec script " << std::endl;
+				std::cout << "Parser error when interpreting as an expression:" << std::endl;
+				std::cout << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
+			}
 			if (Window::WindowInstance->scene->data.contains("autoexec")) {
+				printf("starting autoexec\n");
 				try {
 					nlohmann::json _autoexec = Window::WindowInstance->scene->data.at("autoexec");
 					std::string autoexec__str = alib_j_getstr(_autoexec);
@@ -207,7 +240,6 @@ Window::Initializer _nn{
 						// since the error message includes the script which we're trying
 						// to parse, the result has unbounded length; so use another
 						// ostringstream to hold the error message
-						std::ostringstream errmsg;
 						int parseError1_pos = lua_gettop(state);
 						std::cout << "Errors parsing the autoexec script " << Window::WindowInstance->scene->data.at("autoexec").get<std::string>().c_str() << ":" << std::endl;
 						std::cout << "Parser error when interpreting as an expression:" << std::endl;
@@ -224,54 +256,51 @@ Window::Initializer _nn{
 		Win->OnFocusLost = []() {};
 		Win->OnMaximize = []() {};
 		Win->OnMinimize = []() {};
-		Win->Update = [](){
-			if (Win->keyboard.GetKeyDown(Input::K_PAUSE)) {
-				Win->debug = !Win->debug;
-			}
+		Win->Update = []() {
 			if (!Win->hasFocus) {
 				Sleep(30);
 			}
-			// Toggle fullbright
-			if (Keyboard.GetKeyDown(Input::K_F)) {
-				flipbitv(Win->data, 1);
-			}
-			// Toggle debug window
-			if (Keyboard.GetKeyDown(Input::K_GRAVE) && Win->debug) {
-				flipbitv(Win->data, 12);
-			}
-			// Toggle drawing lines
-			if (Keyboard.GetKeyDown(Input::K_F1)) {
-				flipbitv(Win->data, 2);
+			if (Window::WindowInstance->scene) {
+				if (Window::WindowInstance->scene->ui_img_elem_assets.contains("overlay")) {
+					Win->scene->ui_img_elem_assets.at("overlay")->enabled = getbitv(Window::WindowInstance->data, 2);
+				}
 			}
 		};
-		Win->PostPreRender = [&](){
-			fps_tx.textfmt("%s%.2f", col, Window::WindowInstance->time.fps);
+		Win->PostPreRender = [&]() {
+			fps_tx.textfmt("%s%.2f", col.c_str(), Window::WindowInstance->time.fps);
 			if (!getbitv(Win->data, 0)) {
 				ImGui::SetWindowFocus(NULL);
 				Win->debug_window_open = false;
+				lu_SDL_Window_impl::__INSTANCE->debug_window_open = false;
+				lu_SDL_Window_impl::__INSTANCE->debug_window_active = false;
 			}
 			fps_tx.enabled = Win->debug;
+
 			if (Win->debug) {
 				setbitv(Win->data, 0, 1);
-				for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
-					RectCollider2d* c = RectCollider2d::_mGlobalColArr[o];
-					SDL_SetRenderDrawColor(Win->SDL_REND, 128, 128, 128, 128);
-					SDL_RenderFillRect(Win->SDL_REND, c->rect_cs);
-				}
-				for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
-					alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
-					for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
-						MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
-						Vector2 s = line->start + -*Camera::GetInstance()->m_target;
-						Vector2 e = line->end + -*Camera::GetInstance()->m_target;
-						if (debug_draw_line_overlay) {
+				if (__phys_is_debug || getbitv(Window::WindowInstance->data,8)) {
+
+					for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
+						RectCollider2d* c = RectCollider2d::_mGlobalColArr[o];
+						SDL_Rect r = RectCollider2d::recalc(*c);
+						SDL_SetRenderDrawColor(Win->SDL_REND, 128, 128, 128, 128);
+						SDL_RenderFillRect(Win->SDL_REND, &r);
+						ImGui::TextBackground(alib_strfmt("rect %d", o), { (float)r.x + (r.w * 0.5f), (float)r.y + (r.h * 0.5f) });
+					}
+					for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
+						alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
+						for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
+							MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
+							Vector2 s = line->start + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+							Vector2 e = line->end + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
 							SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 128);
 							SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
-						}
-						if (debug_draw_line_bounds) {
+							// Only render line bounds if we're not in the editor- It's for debugging purposes!
 							SDL_Rect c_lr = MeshLine::bounding_box({ s,e });
 							SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 128, 128, 128);
 							SDL_RenderDrawRect(Win->SDL_REND, &c_lr);
+							Vector2 mid = MeshLine::midpoint(s,e);
+							ImGui::TextBackground(alib_strfmt("line %d", l), {(float)mid.x, (float)mid.y});
 						}
 					}
 				}
@@ -279,6 +308,9 @@ Window::Initializer _nn{
 			else {
 				setbitv(Win->data, 0, 0);
 			}
+
+			
+
 		};
 	}
 };

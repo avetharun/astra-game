@@ -8,5 +8,6 @@ extern "C" {
 #include <lauxlib.h>
 }
 #include <LuaBridge/LuaBridge.h>
+#include <LuaBridge/Vector.h>
 
 #endif

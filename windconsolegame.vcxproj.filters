@@ -48,38 +48,11 @@
     <ClInclude Include="Vectors.hpp">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="preprocessors.h">
-      <Filter>engine</Filter>
-    </ClInclude>
     <ClInclude Include="playercontroller.hpp">
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="e_colors.hpp">
       <Filter>engine</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imconfig.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imgui.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imgui_impl_sdl.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imgui_impl_sdlrenderer.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imgui_internal.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imstb_rectpack.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imstb_textedit.h">
-      <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="imgui\imstb_truetype.h">
-      <Filter>imgui</Filter>
     </ClInclude>
     <ClInclude Include="cw_lua_interp.hpp">
       <Filter>engine</Filter>
@@ -120,6 +93,54 @@
     <ClInclude Include="guiRendererDefs.hpp">
       <Filter>engine\renderer</Filter>
     </ClInclude>
+    <ClInclude Include="imgui\imconfig.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_format.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_impl_sdl.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_impl_sdlrenderer.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_internal.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_markdown.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_texture.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_uielement.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_rectpack.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_textedit.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_truetype.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_image.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="editor.h">
+      <Filter>game</Filter>
+    </ClInclude>
+    <ClInclude Include="global.h">
+      <Filter>engine</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_stdlib.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
@@ -132,8 +153,14 @@
     <None Include="build\tra\test.lua">
       <Filter>world</Filter>
     </None>
-    <None Include="out\main.lua">
+    <None Include="out\lib\debug.lua">
       <Filter>lua</Filter>
+    </None>
+    <None Include="out\lib\lua\global.lua">
+      <Filter>lua</Filter>
+    </None>
+    <None Include="out\main.lua">
+      <Filter>world</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -156,6 +183,9 @@
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="imgui\imgui_widgets.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui_stdlib.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
   </ItemGroup>

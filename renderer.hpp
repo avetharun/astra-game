@@ -32,151 +32,6 @@
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
 
-namespace ImGui {
-	const char ColorMarkerStart = '^';
-	const char ColorMarkerEnd = ']';
-	struct Colour {
-		unsigned char colour[4] = {255,255,255,255};
-		unsigned char getr() {
-			return (colour)[0];
-		}
-		unsigned char getg() {
-			return (colour)[1];
-		}
-		unsigned char getb() {
-			return (colour)[2];
-		}
-		unsigned char geta() {
-			return (colour)[3];
-		}
-		void setr(unsigned char _r) {
-			colour[0] = _r;
-		}
-		void setg(unsigned char _g) {
-			colour[1] = _g;
-		}
-		void setb(unsigned char _b) {
-			colour[2] = _b;
-		}
-		void seta(unsigned char _a) {
-			colour[3] = _a;
-		}
-		Colour(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
-			this->setr(r);
-			this->setg(g);
-			this->setb(b);
-			this->seta(a);
-		}
-		Colour() {}
-		const char* tostring() {
-			return alib_strfmt("%c%02x%02x%02x%c", ColorMarkerStart, getr(), getg(), getb(), ColorMarkerEnd);
-		}
-	};
-	bool ProcessInlineHexColorImpl(const char* start, const char* end, ImVec4& color)
-	{
-		const int hexCount = (int)(end - start);
-		if (hexCount == 6 || hexCount == 8)
-		{
-			char hex[9];
-			strncpy(hex, start, hexCount);
-			hex[hexCount] = 0;
-
-			unsigned int hexColor = 0;
-			if (sscanf(hex, "%x", &hexColor) > 0)
-			{
-				color.x = static_cast<float>((hexColor & 0x00FF0000) >> 16) / 255.0f;
-				color.y = static_cast<float>((hexColor & 0x0000FF00) >> 8) / 255.0f;
-				color.z = static_cast<float>((hexColor & 0x000000FF)) / 255.0f;
-				color.w = 1.0f;
-				if (hexCount == 8)
-				{
-					color.w = static_cast<float>((hexColor & 0xFF000000) >> 24) / 255.0f;
-				}
-
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	void TextColouredFormatted(const char* fmt, ...)
-	{
-		char tempStr[4096];
-
-		va_list argPtr;
-		va_start(argPtr, fmt);
-		_vsnprintf(tempStr, sizeof(tempStr), fmt, argPtr);
-		va_end(argPtr);
-		tempStr[sizeof(tempStr) - 1] = '\0';
-
-		bool pushedColorStyle = false;
-		const char* textStart = tempStr;
-		const char* textCur = tempStr;
-		while (textCur < (tempStr + sizeof(tempStr)) && *textCur != '\0')
-		{
-			if (*textCur == ColorMarkerStart)
-			{
-				// Print accumulated text
-				if (textCur != textStart)
-				{
-					ImGui::TextUnformatted(textStart, textCur);
-					ImGui::SameLine(0.0f, 0.0f);
-				}
-
-				// Process color code
-				const char* colorStart = textCur + 1;
-				do
-				{
-					++textCur;
-				} while (*textCur != '\0' && *textCur != ColorMarkerEnd);
-
-				// Change color
-				if (pushedColorStyle)
-				{
-					ImGui::PopStyleColor();
-					pushedColorStyle = false;
-				}
-
-				ImVec4 textColor;
-				if (ProcessInlineHexColorImpl(colorStart, textCur, textColor))
-				{
-					ImGui::PushStyleColor(ImGuiCol_Text, textColor);
-					pushedColorStyle = true;
-				}
-
-				textStart = textCur + 1;
-			}
-			else if (*textCur == '\n')
-			{
-				// Print accumulated text an go to next line
-				ImGui::TextUnformatted(textStart, textCur);
-				textStart = textCur + 1;
-			}
-
-			++textCur;
-		}
-
-		if (textCur != textStart)
-		{
-			ImGui::TextUnformatted(textStart, textCur);
-		}
-		else
-		{
-			ImGui::NewLine();
-		}
-
-		if (pushedColorStyle)
-		{
-			ImGui::PopStyleColor();
-		}
-	}
-
-	void TextColouredUnformatted(const char* text) {
-		TextColouredFormatted(text);
-	}
-};
-
 void initRenderer(SDL_Renderer* r, SDL_Window* w) {
 	SDL_REND_RHPP = r;
 	SDL_WIND_RHPP = w;
@@ -240,8 +95,8 @@ struct Sprite{
 	 * \param ..
 	 */
 	char params;
-	const char* name = nullptr;
-	std::string identifier = "";
+	std::string name;
+	char identifier[48]{ 0 };
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
@@ -292,25 +147,22 @@ struct Sprite{
 		uv_final.h = uv.h;
 		if (center) {
 			_offset = Vector2(
-				Camera::GetInstance()->m_Viewport.x / 2,
-				Camera::GetInstance()->m_Viewport.y / 2
+				Camera::GetInstance()->m_Viewport.x / 2 + Camera::GetInstance()->m_Offset.x,
+				Camera::GetInstance()->m_Viewport.y / 2 + Camera::GetInstance()->m_Offset.y
 			) + _cameraViewOffset;
 		}
 		else {
 			_offset = (
 					(-*Camera::GetInstance()->m_target + transform.position) 
-				) + _cameraViewOffset;
-		}
-		if (enableCameraOffset) {
-			_offset += Camera::GetInstance()->m_Offset;
+				) + Camera::GetInstance()->m_Offset;
 		}
 		if (!SUCCEEDED(rect)) {
 			rect = new SDL_Rect();
 		}
 		rect->x =(int)_offset.x;
 		rect->y =(int)_offset.y;
-		rect->w = abs(transform.scale.x);
-		rect->h = abs(transform.scale.y);
+		rect->w = abs(transform.scale.x) * Camera::GetInstance()->scale;
+		rect->h = abs(transform.scale.y) * Camera::GetInstance()->scale;
 		if (center) {
 			rect->x = (int)_offset.x - (transform.scale.x / 2);
 			rect->y = (int)_offset.y - (transform.scale.y / 2);
@@ -337,6 +189,7 @@ struct Sprite{
 		if (!enabled && !manualDraw) { return; }
 		Update();
 		// If sprite is centered, this method will never render it!
+		// cull images outside of viewport
 		if (!center) {
 			SDL_Rect bounds = {
 				(int)Camera::GetInstance()->m_Offset.x,
@@ -344,14 +197,17 @@ struct Sprite{
 				(int)Camera::GetInstance()->m_Viewport.x,
 				(int)Camera::GetInstance()->m_Viewport.y
 			};
-			//SDL_SetRenderDrawColor(SDL_REND_RHPP, 128, 255, 255, 255);
-			//SDL_RenderDrawRect(SDL_REND_RHPP, &bounds);
+			// If overlay isn't visible, then cull
+			if (!Camera::GetInstance()->culling) {
+				// 2 pixels padding
+				bounds = {
+				-2,-2,
+				(int)Camera::GetInstance()->m_GlobalViewport.x + 2,
+				(int)Camera::GetInstance()->m_GlobalViewport.y + 2
+				};
+			}
 			if (!Raycast2D::RectIntersects(rect, &bounds)) {
 				isRendering = false;
-#ifdef CW_EXTRA_DEBUG_INFO
-				cwError::sstate(cwError::CW_DEBUG);
-				cwError::serrof("Not rendering sprite at %d, %d wh(%d, %d) because it doesn't intersect camera at %d, %d wh(%d, %d)", rect->x, rect->y, rect->w, rect->h, bounds.x, bounds.y, bounds.w, bounds.h);
-#endif
 				return;
 			}
 		}
@@ -372,15 +228,11 @@ struct Sprite{
 
 	
 	void operator ~() {
-		auto& s_sf = surfFilemaps;
-		// the pixels variable won't be initialized if it's invalid. If so, ignore it and just remove this object.
-		s_sf.erase(name);
 		auto& sv = Sprite::_mglobalspritearr;
 		sv.erase(std::remove(sv.begin(), sv.end(), this), sv.end());
-		SDL_FreeSurface(surf);
-		SDL_DestroyTexture(Texture);
-		RtlZeroMemory(this, sizeof(struct Sprite));
-		
+		if (Texture) {
+			SDL_DestroyTexture(Texture);
+		}
 	}
 	Sprite(const char* filename, SDL_Rect spriteuv = SDL_Rect{ 0,0,0,0 }) {
 		name = filename;
@@ -415,18 +267,52 @@ struct Sprite{
 		return;
 	}
 	void setID(std::string i) {
-		this->identifier = i;
+		strncpy(this->identifier, i.c_str(), alib_min(i.length(), 40));
+	}
+	std::string getID() { return std::string(this->identifier, 40); }
+	static bool eraseElementByID(std::string id) {
+		for (int i = 0; i < _mglobalspritearr.size(); i++) {
+			Sprite* _s = _mglobalspritearr[i];
+			if (alib_streqn(id, _s->identifier, 40)) {
+				_mglobalspritearr.erase(_mglobalspritearr.begin() + i);
+				_s->operator~();
+				return true;
+			}
+		}
+		return false;
 	}
 	static Sprite* getElementByID(std::string id) {
 		for (int i = 0; i < _mglobalspritearr.size(); i++) {
 			Sprite* _s = _mglobalspritearr[i];
 			std::cout << "Testing ID '" << id.c_str() << "' with id '" << _s->identifier << '\'' << '\n';
-			if (alib_streq(id, _s->identifier.c_str())) {
+			if (alib_streqn(id, _s->identifier, 40)) {
 				std::cout << "ID matches!";
 				return _s;
 			}
 		}
 		return nullptr;
+	}
+	static void insertElementWithID(std::string id, Sprite* s) {
+		s->setID(id);
+		_mglobalspritearr.push_back(s);
+	}
+	Sprite* copy() {
+		Sprite* s = new Sprite();
+		*s = *this;
+		*s->rect = *this->rect;
+		s->surf = SDL_DuplicateSurface(this->surf);
+		s->Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);;
+		return s;
+	}
+	Sprite * withID(std::string id) {
+		this->setID(id);
+		return this;
+	}
+	void insert() {
+		_mglobalspritearr.push_back(this);
+	}
+	void remove() {
+		eraseElementByID(this->identifier);
 	}
 
 
@@ -538,8 +424,6 @@ struct BatchRenderer {
 
 	}
 };
-
-
 
 
 

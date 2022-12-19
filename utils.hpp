@@ -1,5 +1,13 @@
 #ifndef __lib_aveth_utils_hpp
 #define __lib_aveth_utils_hpp
+//  ALIB: A C-Style programming utility header for tedious tasks.
+//
+//  Any instance of array creation or object creation is handled using the C-style malloc()/free() functions!
+//
+//
+
+
+
 /** - https://github.com/avetharun/avetharun/blob/main/ave_libs.hpp
  @copyright Avetharun 2021-2022 - GNU-GPL3-a
  Let's keep this simple. It follows the GNU GPL3 license, with very few modifications and exceptions.
@@ -38,12 +46,183 @@
       // Note: semicolon is NOT needed, as if it's put at the end, it will produce an intellisense warning. Apparently it's by design. Ignore it if it happens.
       // Original impl: https://github.com/avetharun/avetharun/blob/bf49a022c7021fb3200231722f7975f167e1cf9f/ave_libs.hpp#L308
                        // Also added assert handling
+#include <string>
+#include <assert.h>
+#include <stdarg.h>
+#define _ALIB_FQUAL static inline
+std::string ___nn_alib_error_charp_str;
+_ALIB_FQUAL char* alib_strfmt(const char* fmt, ...);
+#define alib_get_error() ___nn_alib_error_charp_str.c_str()
+#define alib_set_error(...) ___nn_alib_error_charp_str = alib_strfmt(__VA_ARGS__);
+
+#define alib_rad2deg M_PI / 180
+#define alib_deg2rad M_PI * 180
+#define alib_1rad 180 / M_PI
 
 
+
+// Note: ignore any "function definition for typedef_func_ty" or "Y is not defined" errors. They're temporary.
+#define d_typedef_func_ty(return_z, name, ...) typedef return_z (*name)(__VA_ARGS__);
+// Copy of ImGui's IMVector class, slimmed to fit the need of this library.
+// Only 255 stack objects can be pushed at once. This is because THIS ISNT A REPLACEMENT OF STD::STACK
+
+template<typename T>
+struct ALStack
+{
+    int                 Size;
+    int                 Capacity;
+    T* Data;
+
+    // Provide standard typedefs but we don't use them ourselves.
+    typedef T                   value_type;
+    typedef value_type* iterator;
+    typedef const value_type* const_iterator;
+
+    // Constructors, destructor
+    inline ALStack() { Size = Capacity = 0; Data = NULL; }
+    inline ALStack(const ALStack<T>& src) { Size = Capacity = 0; Data = NULL; operator=(src); }
+    inline ALStack<T>& operator=(const ALStack<T>& src) { clear(); resize(src.Size); memcpy(Data, src.Data, (size_t)Size * sizeof(T)); return *this; }
+    inline ~ALStack() { if (Data) free(Data); } // Important: does not destruct anything
+
+    inline void         clear() { if (Data) { Size = Capacity = 0; free(Data); Data = NULL; } }  // Important: does not destruct anything
+    inline void         clear_delete() { for (int n = 0; n < Size; n++) Data[n].~T(); clear(); }     // Important: never called automatically! always explicit.
+    inline void         clear_destruct() { for (int n = 0; n < Size; n++) Data[n].~T(); clear(); }           // Important: never called automatically! always explicit.
+
+    inline bool         empty() const { return Size == 0; }
+    inline int          size() const { return Size; }
+    inline int          size_in_bytes() const { return Size * (int)sizeof(T); }
+    inline int          max_size() const { return 0xff / (int)sizeof(T); }
+    inline int          capacity() const { return Capacity; }
+
+    inline T* begin() { return Data; }
+    inline const T* begin() const { return Data; }
+    inline T* end() { return Data + Size; }
+    inline const T* end() const { return Data + Size; }
+    inline T& front() { assert(Size > 0); return Data[0]; }
+    inline const T& front() const { assert(Size > 0); return Data[0]; }
+    inline T& back() { assert(Size > 0); return Data[Size - 1]; }
+    inline T& top() { return back(); }
+    inline const T& back() const { assert(Size > 0); return Data[Size - 1]; }
+    inline const T& top() const { return back(); }
+    inline T& at(int amt) { assert(amt < Size); return Data + amt; }
+    inline void         swap(ALStack<T>& rhs) { int rhs_size = rhs.Size; rhs.Size = Size; Size = rhs_size; int rhs_cap = rhs.Capacity; rhs.Capacity = Capacity; Capacity = rhs_cap; T* rhs_data = rhs.Data; rhs.Data = Data; Data = rhs_data; }
+    inline T* insert(const T* it, const T& v) { assert(it >= Data && it <= Data + Size); const ptrdiff_t off = it - Data; if (Size == Capacity) reserve(_grow_capacity(Size + 1)); if (off < (int)Size) memmove(Data + off + 1, Data + off, ((size_t)Size - (size_t)off) * sizeof(T)); memcpy(&Data[off], &v, sizeof(v)); Size++; return Data + off; }
+    inline bool         contains(const T& v) const { const T* data = Data;  const T* data_end = Data + Size; while (data < data_end) if (*data++ == v) return true; return false; }
+
+    inline int          _grow_capacity(int sz) const { int new_capacity = Capacity ? (Capacity + Capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+    inline void         resize(int new_size) { if (new_size > Capacity) reserve(_grow_capacity(new_size)); Size = new_size; }
+    inline void         resize(int new_size, const T& v) { if (new_size > Capacity) reserve(_grow_capacity(new_size)); if (new_size > Size) for (int n = Size; n < new_size; n++) memcpy(&Data[n], &v, sizeof(v)); Size = new_size; }
+    inline void         shrink(int new_size) { assert(new_size <= Size); Size = new_size; } // Resize a vector to a smaller size, guaranteed not to cause a reallocation
+    inline void         reserve(int new_capacity) { if (new_capacity <= Capacity) return; T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T)); if (Data) { memcpy(new_data, Data, (size_t)Size * sizeof(T)); free(Data); } Data = new_data; Capacity = new_capacity; }
+
+    // NB: It is illegal to call push_back/push_front/insert with a reference pointing inside the ImVector data itself! e.g. v.push_back(v[10]) is forbidden.
+    inline void         push_back(const T& v) { assert(Size == Capacity); reserve(_grow_capacity(Size + 1)); memcpy(&Data[Size], &v, sizeof(v)); Size++; }
+    inline void         pop_back() { assert(Size > 0); Size--; }
+    inline void         pop() { assert(Size > 0); Size--; }
+    inline void         push(const T& v) { if (Size == 0) push_back(v); else insert(Data, v); }
+    inline void         push_front(const T& v) { if (Size == 0) push_back(v); else insert(Data, v); }
+};
+#define AlibStack ALStack
+#define alib_stack ALStack
+#include <exception>
+#define alib_noerr(CODE_TO_RUN) \
+    try{\
+        CODE_TO_RUN;\
+    }catch(std::exception ignored){}
+
+#define M_E        2.71828182845904523536   // e
+#define M_LOG2E    1.44269504088896340736   // log2(e)
+#define M_LOG10E   0.434294481903251827651  // log10(e)
+#define M_LN2      0.693147180559945309417  // ln(2)
+#define M_LN10     2.30258509299404568402   // ln(10)
+#define M_PI       3.14159265358979323846   // pi
+#define M_PI_2     1.57079632679489661923   // pi/2
+#define M_PI_4     0.785398163397448309616  // pi/4
+#define M_1_PI     0.318309886183790671538  // 1/pi
+#define M_2_PI     0.636619772367581343076  // 2/pi
+#define M_2_SQRTPI 1.12837916709551257390   // 2/sqrt(pi)
+#define M_SQRT2    1.41421356237309504880   // sqrt(2)
+#define M_SQRT1_2  0.707106781186547524401  // 1/sqrt(2)
+bool alib_atob(const char* buffer) {
+    size_t l = strlen(buffer);
+    if (l >= 1) {
+        if (buffer[0] == 't' || buffer[0] == '1') {
+            return true;
+        }
+        if (buffer[0] == 'f' || buffer[0] == '0') {
+            return false;
+        }
+    }
+    return false;
+}
+char* alib_itoa(int num, char* buffer, int base) {
+    int curr = 0;
+
+    if (num == 0) {
+        // Base case
+        buffer[curr++] = '0';
+        buffer[curr] = '\0';
+        return buffer;
+    }
+
+    int num_digits = 0;
+
+    if (num < 0) {
+        if (base == 10) {
+            num_digits++;
+            buffer[curr] = '-';
+            curr++;
+            // Make it positive and finally add the minus sign
+            num *= -1;
+        }
+        else
+            // Unsupported base. Return NULL
+            return NULL;
+    }
+
+    num_digits += (int)floor(log(num) / log(base)) + 1;
+
+    // Go through the digits one by one
+    // from left to right
+    while (curr < num_digits) {
+        // Get the base value. For example, 10^2 = 1000, for the third digit
+        int base_val = (int)pow(base, num_digits - 1 - curr);
+
+        // Get the numerical value
+        int num_val = num / base_val;
+
+        char value = num_val + '0';
+        buffer[curr] = value;
+
+        curr++;
+        num -= base_val * num_val;
+    }
+    buffer[curr] = '\0';
+    return buffer;
+}
+char* alib_ftoa(float f)
+{
+    static char        buf[17];
+    char* cp = buf;
+    unsigned long    l, rem;
+
+    if (f < 0) {
+        *cp++ = '-';
+        f = -f;
+    }
+    l = (unsigned long)f;
+    f -= (float)l;
+    rem = (unsigned long)(f * 1e6);
+    sprintf(cp, "%lu.%6.6lu", l, rem);
+    return buf;
+}
 #ifndef NDEBUG
 // Production builds should set NDEBUG=1
 #define NDEBUG false
 #endif
+#define alib_malloca(TYPE, length) (TYPE*)malloc(length)
+#define alib_malloct(TYPE) (TYPE*)malloc(sizeof(TYPE))
+#ifdef WIN32
 bool alib_can_reach_mem(void* ptr) {
     __try {
         char prefix = *(((char*)ptr)); //Get the first byte. If this doesn't cause an error, then we can reach this.
@@ -53,19 +232,19 @@ bool alib_can_reach_mem(void* ptr) {
         return false; //Can't reach this memory
     }
 }
-#define alib_template_ty_TY_A_B template <typename A, typename B>
+#endif
 #ifndef ALIB_DEBUG_BUILD
 #define ALIB_DEBUG_BUILD !NDEBUG
 #endif
 
 #if defined(ALIB_FORCE_BINARY) || (!defined(ALIB_NO_BINARY))
- // 
- //      Binary & bit manipulation utilities
- //    - Avetharun
- // 
+// 
+//      Binary & bit manipulation utilities
+//    - Avetharun
+// 
 
 
- /* Helper macros. Unless you know what you're doing, don't run these. */
+/* Helper macros. Unless you know what you're doing, don't run these. */
 
 // Sourced from https://bytes.com/topic/c/answers/219656-literal-binary
 // Binary decoding to unsigned long v
@@ -168,32 +347,60 @@ bool alib_can_reach_mem(void* ptr) {
 #include <fstream>
 #include <sstream>
 #include <string>
-inline std::string alib_file_read(std::ifstream& file) {
-    std::ostringstream buf;
-    buf << file.rdbuf();
-    return buf.str();
+ // If size != 0, leave size as is
+_ALIB_FQUAL void __alib_internal_reqlen__f_impl(size_t* sz, const char* arr) {
+    if ((*sz) == 0) {
+        (*sz) = strlen(arr);
+    }
 }
-inline std::string alib_file_read(const char* fname) {
-    std::ostringstream buf;
-    std::ifstream file(fname, std::ios::binary);
-    buf << file.rdbuf();
-    return buf.str();
-}
+/* We want POSIX.1-2008 + XSI, i.e. SuSv4, features */
+#define _XOPEN_SOURCE 700
+
+/* Added on 2017-06-25:
+   If the C library can support 64-bit file sizes
+   and offsets, using the standard names,
+   these defines tell the C library to do so. */
+#define _LARGEFILE64_SOURCE
+#define _FILE_OFFSET_BITS 64 
+
+#include <stdlib.h>
+#ifdef __linux__
+#include <unistd.h>
+#endif
+#include <time.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+
+   /* POSIX.1 says each process has at least 20 file descriptors.
+    * Three of those belong to the standard streams.
+    * Here, we use a conservative estimate of 15 available;
+    * assuming we use at most two for other uses in this program,
+    * we should never run into any problems.
+    * Most trees are shallower than that, so it is efficient.
+    * Deeper trees are traversed fine, just a bit slower.
+    * (Linux allows typically hundreds to thousands of open files,
+    *  so you'll probably never see any issues even if you used
+    *  a much higher value, say a couple of hundred, but
+    *  15 is a safe, reasonable value.)
+   */
+#ifndef USE_FDS
+#define USE_FDS 15
+#endif
 
 
-void alib_file_read(const char* fname, const char** out_, unsigned long long* size_) {
-    std::string _fr = alib_file_read(fname);
-    *out_ = _fr.c_str();
-    *size_ = _fr.size();
+_ALIB_FQUAL const char* __alib_strfmt_file(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    size_t bufsz = 0;
+    bufsz = snprintf(NULL, 0, fmt, args);
+    const char* _buf = (const char*)malloc(bufsz);
+    vsprintf((char*)_buf, fmt, args);
+    va_end(args);
+    return _buf;
 }
 
-void alib_file_read(std::ifstream file, const char** out_, unsigned long long* size_) {
-    std::string _fr = alib_file_read(file);
-    *out_ = _fr.c_str();
-    *size_ = _fr.size();
-}
-
-inline bool alib_file_exists(const char* name) {
+_ALIB_FQUAL bool alib_file_exists(const char* name) {
     if (FILE* file = fopen(name, "r")) {
         fclose(file);
         return true;
@@ -203,14 +410,79 @@ inline bool alib_file_exists(const char* name) {
     }
 }
 
-void alib_file_write(const char* filen, const char* d) {
+_ALIB_FQUAL size_t alib_file_length(FILE* file, struct stat* file_stat) {
+    fstat(_fileno(file), file_stat);
+    size_t sz = file_stat->st_size;
+    return sz;
+}
+_ALIB_FQUAL size_t alib_file_length(FILE* file) {
+    struct stat file_stat;
+    fstat(_fileno(file), &file_stat);
+    size_t sz = file_stat.st_size;
+    return sz;
+}
+
+_ALIB_FQUAL size_t alib_file_length(const char* fname) {
+    if (!alib_file_exists(fname)) {
+        return 0;
+    }
+    FILE* file = fopen(fname, "rb");
+    size_t sz = alib_file_length(file);
+    fclose(file);
+    return sz;
+}
+
+_ALIB_FQUAL std::string alib_file_read(std::ifstream& file) {
+    std::ostringstream buf;
+    buf << file.rdbuf();
+    return buf.str();
+}
+_ALIB_FQUAL std::string alib_file_read(const char* fname) {
+    std::ostringstream buf;
+    std::ifstream file(fname, std::ios::binary);
+    buf << file.rdbuf();
+    file.close();
+    return buf.str();
+}
+
+
+_ALIB_FQUAL void alib_file_read(const char* fname, const char* out_, unsigned long long* size_) {
+    if (!alib_file_exists(fname)) {
+        return;
+    }
+    FILE* file = fopen(fname, "rb");
+    struct stat file_stat;
+    size_t len = alib_file_length(file, &file_stat);
+    *size_ = len;
+    if (!out_) {
+        out_ = alib_malloca(char, len);
+    }
+    fread((void*)out_, len, 1, file);
+    fclose(file);
+}
+_ALIB_FQUAL void alib_file_read(const char* fname, const char* out_, unsigned long long size_) {
+    if (!alib_file_exists(fname)) {
+        return;
+    }
+    FILE* file = fopen(fname, "rb");
+    struct stat file_stat;
+    size_t len = alib_file_length(file, &file_stat);
+    if (!out_) {
+        out_ = alib_malloca(char, len);
+    }
+    fread((void*)out_, len, 1, file);
+    fclose(file);
+}
+
+_ALIB_FQUAL void alib_file_write(const char* filen, const char* d, size_t l = 0) {
     std::ofstream file(filen, std::ios::out | std::ios::binary);
-    size_t l = strlen(d);
+    __alib_internal_reqlen__f_impl(&l, d);
     file.write(d, l);
     file.close();
 }
-void alib_file_write(std::ostream& file, const char* d) {
-    size_t l = strlen(d);
+// Note: does NOT close file after!
+_ALIB_FQUAL void alib_file_write(std::ostream& file, const char* d, size_t l = 0) {
+    __alib_internal_reqlen__f_impl(&l, d);
     file.write(d, l);
 }
 
@@ -225,16 +497,13 @@ void alib_file_write(std::ostream& file, const char* d) {
 #define GETCWD getcwd
 #define CHDIR chdir
 #endif
-bool alib_scwd(const char* dir) { return CHDIR(dir) == 0; }
+_ALIB_FQUAL bool alib_scwd(const char* dir) { return CHDIR(dir) == 0; }
 
-char* alib_gcwd() {
+_ALIB_FQUAL char* alib_gcwd() {
     return GETCWD(0, 0);
 }
 
 #endif // ALIB_NO_FILE_UTILS
-
-
-
 
 
 #if defined(ALIB_FORCE_CONCAT) || (!defined(ALIB_NO_CONCAT))
@@ -246,6 +515,8 @@ char* alib_gcwd() {
 #define concat3(a, b, c) __concat_internal3(a, b, c)
 #define concat2(a, b) __concat_internal2(a, b)
 #endif // ALIB_NO_CONCAT
+
+
 
 
 
@@ -288,7 +559,8 @@ inline_initializer _nn {
 #define _g_nn_internal__3__(line) ___nn_internal_concat(_g_nn_internal__2_1_(line), _g_nn_internal__2__(line), _un)
 
 
-#define _nn ___nn_internal_concat(_, _1_nn_internal__3__, _) // Create no-name object
+#define _nn_impl ___nn_internal_concat(_, _1_nn_internal__3__, _) // Create no-name object
+#define _nn _nn_impl
 #define _nng(line) ___nn_internal_concat(_, _g_nn_internal__3__(line), _) // Get no-name object at file line (LINE)
 
 #endif // ALIB_NO_NONAMES
@@ -301,13 +573,18 @@ struct alib_inline_run {
     alib_inline_run(std::function<void()> initFunc) {
         initFunc();
     }
+    d_typedef_func_ty(void, void_0a_f_impl);
+    template <typename T = void_0a_f_impl>
+    alib_inline_run(T initFunc) {
+        initFunc();
+    }
 };
 
 
 #endif // ALIB_NO_INLINE_RUNNERS
 
 
-#if (defined(ALIB_FORCE_WIN_UTILS) && defined(_WIN32 )) || (!defined(ALIB_NO_WIN_UTILS)) 
+#if (defined(ALIB_FORCE_WIN_UTILS) && defined(_WIN32)) && (!defined(ALIB_NO_WIN_UTILS)) 
 #include <Windows.h>
 void alib_hide_console()
 {
@@ -328,8 +605,6 @@ bool alib_console_visible()
 #endif
 
 #if defined(ALIB_FORCE_FUNCPTR) || (!defined(ALIB_NO_FUNCPTR))
-// Note: ignore any "function definition for typedef_func_ty" or "Y is not defined" errors. They're temporary.
-#define d_typedef_func_ty(return_z, name, ...) typedef return_z (*name)(##__VA_ARGS__);
 #define noop (void)0
 d_typedef_func_ty(int, int_2i_f, int, int)
 d_typedef_func_ty(int, int_1i_f, int)
@@ -344,12 +619,12 @@ d_typedef_func_ty(void, void_1pc_1i32_f, const char*, uint32_t)
 
 #if defined(ALIB_FORCE_BYTE_UTILS) || (!defined(ALIB_NO_BYTE_UTILS))
 #include <cmath>
-unsigned long alib_fnull(const char* arr) {
+_ALIB_FQUAL unsigned long alib_fnull(const char* arr) {
     int n_t_offset = 0;
     while (*arr++ != '\0') { n_t_offset++; }
     return n_t_offset;
 }
-unsigned long alib_n_fnull(const char* arr, int limit) {
+_ALIB_FQUAL unsigned long alib_n_fnull(const char* arr, int limit) {
     for (int i = 0; i < limit; i++) {
         if (arr[i] == '\0') {
             return i;
@@ -357,14 +632,30 @@ unsigned long alib_n_fnull(const char* arr, int limit) {
     }
     return 0;
 }
-size_t alib_nulpos(const char* arr) {
+_ALIB_FQUAL size_t alib_nulpos(const char* arr) {
     return alib_fnull(arr);
 }
-size_t alib_nulposn(const char* arr, int limit) {
+_ALIB_FQUAL size_t alib_nulposn(const char* arr, int limit) {
     return alib_n_fnull(arr, limit);
 }
+template <typename T>
+_ALIB_FQUAL T alib_max(T first, T second) {
+
+    if (first < second) { return second; }
+    return first;
+}
+template <typename T>
+_ALIB_FQUAL T alib_min(T first, T second) {
+
+#ifndef _CMATH_
+    if (first > second) { return second; }
+    return first;
+#else 
+    return min(first, second);
+#endif
+}
 #define __alib_haslogm__
-int alib_log(int base, int n) {
+_ALIB_FQUAL int alib_log(int base, int n) {
 #ifndef _CMATH_
     // 75% as fast as cmath, if using recursion. If we have cmath avalible, use that instead.
     return (n > base - 1)
@@ -375,19 +666,24 @@ int alib_log(int base, int n) {
 #endif
 }
 #define __alib_haswrange__
-bool alib_wrange(int min, int max, int val) {
+_ALIB_FQUAL bool alib_wrange(int min, int max, int val) {
     return ((val - max) * (val - min) <= 0);
 }
 // Taken from python's usage of math.isclose()
-bool alib_fclose(float first, float second, float rel_tol = 1e-09, float abs_tol = 0.0) {
-    return abs(first - second) <= max(rel_tol * max(abs(first), abs(second)), abs_tol);
+_ALIB_FQUAL bool alib_fisclose(float first, float second, float rel_tol = 1e-09, float abs_tol = 0.0) {
+    return abs(first - second) <= alib_max(rel_tol * alib_max(abs(first), abs(second)), abs_tol);
 }
-bool alib_dclose(double first, double second, double rel_tol = 1e-09, double abs_tol = 0.0) {
-    return abs(first - second) <= max(rel_tol * max(abs(first), abs(second)), abs_tol);
+_ALIB_FQUAL bool alib_disclose(double first, double second, double rel_tol = 1e-09, double abs_tol = 0.0) {
+    return abs(first - second) <= alib_max(rel_tol * alib_max(abs(first), abs(second)), abs_tol);
+}
+// Check if the difference between [0] and [1] are within [amount]
+_ALIB_FQUAL bool alib_iswithin(float first, float second, float amount) {
+    float a = abs(first - second);
+    return (a < amount);
 }
 
 
-int alib_digitsInNum(long n, int base = 10)
+_ALIB_FQUAL int alib_digitsInNum(long n, int base = 10)
 {
     if (n == 0) { return 1; }
     if (n < 0) {
@@ -400,45 +696,46 @@ int alib_digitsInNum(long n, int base = 10)
 
 // Get digits of [num], formatted as ASCII (by default, pass false to disable)
 // arr[0] is the amount of digits in the array
-char* alib_getDigitsOfNumber(int num, bool ascii = true) {
-    int amt_digits = alib_digitsInNum(num, 10) + 1;
+// Note: malloc 
+_ALIB_FQUAL char* alib_getDigitsOfNumber(int num, bool ascii = true) {
+    int amt_digits = alib_digitsInNum(num, 10);
     if (amt_digits <= 0) {
         amt_digits = 1;
     }
-    char* digits = (char*)malloc(amt_digits);
-    *digits = amt_digits;
+    char* digits = (char*)malloc(amt_digits + 1);
     int i = 1;
     while (num != 0)
     {
         // What even is math?
         const int least_significant_digit = num % 10;
-        digits[i] = (least_significant_digit + (ascii) ? 48 : 0);
+        digits[i] = (least_significant_digit + ((ascii) ? 48 : 0));
         num /= 10;
         i++;
     }
+
     return digits;
 }
 
-const char* alib_bit_rep[16] = {
+static const char* alib_bit_rep[16] = {
     "0000","0001","0010","0011",
     "0100","0101","0110","0111",
     "1000","1001","1010","1011",
     "1100","1101","1110","1111",
 };
 
-// If size != 0, leave size as is
-void alib_internal_reqlen(size_t* sz, const char* arr) {
+// If size != 0, leave size as is, otherwise size = strlen(arr)
+_ALIB_FQUAL void alib_reqlen(size_t* sz, const char* arr) {
     if ((*sz) == 0) {
         (*sz) = strlen(arr);
     }
 }
 
-void alib_print_byte(uint8_t byte)
+_ALIB_FQUAL void alib_print_byte(uint8_t byte)
 {
     printf("%s%s", alib_bit_rep[byte >> 4], alib_bit_rep[byte & 0x0F]);
 }
 
-int alib_endswith(const char* str, const char* suffix)
+_ALIB_FQUAL int alib_endswith(const char* str, const char* suffix)
 {
     if (!str || !suffix)
         return 0;
@@ -449,7 +746,7 @@ int alib_endswith(const char* str, const char* suffix)
     return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
 }
 
-int alib_beginswith(const char* str, const char* prefix)
+_ALIB_FQUAL int alib_beginswith(const char* str, const char* prefix)
 {
     if (!str || !prefix)
         return 0;
@@ -459,10 +756,27 @@ int alib_beginswith(const char* str, const char* prefix)
         return 0;
     return strncmp(str, prefix, lenprefix) == 0;
 }
-// get position of char 
-int alib_getchrpos(const char* src, char c, size_t len = 0)
+// Get string between two strings
+_ALIB_FQUAL int alib_substr2(const char* input, size_t input_len) {
+
+}
+// if string begins with X and the character afterward is NOT the last character of the prefix.
+_ALIB_FQUAL int alib_beginswith_anddoesntfollow(const char* str, const char* prefix)
 {
-    alib_internal_reqlen(&len, src);
+    if (!str || !prefix)
+        return 0;
+    size_t lenstr = strlen(str);
+    size_t lenprefix = strlen(prefix);
+    if (lenprefix > lenstr)
+        return 0;
+    // No character after
+    if (lenstr < lenprefix + 1) { return strncmp(str, prefix, lenprefix) == 0; }
+    return strncmp(str, prefix, lenprefix) == 0 && str[lenprefix] != prefix[lenprefix - 1];
+}
+// get position of char 
+_ALIB_FQUAL int alib_getchrpos(const char* src, char c, size_t len = 0)
+{
+    alib_reqlen(&len, src);
     for (size_t i = 0; i < len; i++)
     {
         if (src[i] == c)
@@ -471,35 +785,39 @@ int alib_getchrpos(const char* src, char c, size_t len = 0)
     return -1;
 }
 // char array contains
-bool alib_costr(std::string src, const char* match) {
+_ALIB_FQUAL bool alib_costr(std::string src, const char* match) {
     if (src.find(match) != std::string::npos) {
         return true;
     }
     return false;
 }
-int alib_chreq(const char* src, const char* match) {
+_ALIB_FQUAL int alib_chreq(const char* src, const char* match) {
     size_t sl = strlen(src);
     size_t ml = strlen(match);
     if (ml > sl) { return false; }
     return strncmp(src, match, ml);
 }
-int alib_streq(std::string src, const char* match) {
+_ALIB_FQUAL int alib_streq(std::string src, const char* match) {
     size_t sl = src.size();
     size_t ml = strlen(match);
     if (ml > sl) { return false; }
     return (src.compare(match) == 0);
 }
+_ALIB_FQUAL int alib_streqn(std::string src, const char* match, const size_t len) {
+    return strncmp(src.c_str(), match, len) == 0;
+}
 // Occurances of char `c` in `src`
-size_t alib_chrocc(const char* src, char c, size_t len = 0) {
-    alib_internal_reqlen(&len, src);
+_ALIB_FQUAL size_t alib_chrocc(const char* src, char c, size_t len = 0) {
+    alib_reqlen(&len, src);
     size_t occ = 0;
     for (size_t i = 0; i < len; i++) {
         if (src[i] == c) { occ++; }
     }
     return occ;
 }
-const char* alib_rmocc(const char* src, char c, size_t len = 0) {
-    alib_internal_reqlen(&len, src);
+#include <vector>
+_ALIB_FQUAL const char* alib_rmocc(const char* src, char c, size_t len = 0) {
+    alib_reqlen(&len, src);
     std::vector<char> src_copy;
     for (int i = 0; i < len; i++) {
         if (src[i] == c) { continue; }
@@ -509,20 +827,20 @@ const char* alib_rmocc(const char* src, char c, size_t len = 0) {
     return src_copy.data();
 }
 
-// Set byte at offset of array 
-char alib_get_byte(void* data, int offset) {
+// get byte at offset of array 
+_ALIB_FQUAL char alib_get_byte(void* data, int offset) {
     return ((char*)data)[offset];
 }
-// Set byte at array[0]
-char alib_get_byte(void* data) {
+// get byte at array[0]
+_ALIB_FQUAL char alib_get_byte(void* data) {
     return ((char*)data)[0];
 }
-// Set byte at offset of array 
-void alib_set_byte(void* data, char byte, int offset) {
+// set byte at offset of array 
+_ALIB_FQUAL void alib_set_byte(void* data, char byte, int offset) {
     reinterpret_cast<char*>(data)[offset] = byte;
 }
-// Set byte at array[0]
-void alib_set_byte(void* data, char byte) {
+// set byte at array[0]
+_ALIB_FQUAL void alib_set_byte(void* data, char byte) {
     reinterpret_cast<char*>(data)[0] = byte;
 }
 
@@ -533,7 +851,7 @@ void alib_set_byte(void* data, char byte) {
 
 #ifdef __GNUC__
 #define VSCPRINTF "implemented"
-int vscprintf(const char* format, va_list ap)
+_ALIB_FQUAL int vscprintf(const char* format, va_list ap)
 {
     va_list ap_copy;
     va_copy(ap_copy, ap);
@@ -552,7 +870,7 @@ int vscprintf(const char* format, va_list ap)
 #ifdef _MSC_VER
 #define VASPRINTF "implemented"
 #define ASPRINTF "implemented"
-int vasprintf(char** strp, const char* format, va_list ap)
+_ALIB_FQUAL int vasprintf(char** strp, const char* format, va_list ap)
 {
     int len = vscprintf(format, ap);
     if (len == -1)
@@ -585,24 +903,24 @@ int asprintf(char** strp, const char* format, ...)
 #endif
 
 
-size_t alib_2d_ar_pos(size_t pitch, size_t x, size_t y, size_t bytes_per_step = 4) {
+_ALIB_FQUAL size_t alib_2d_ar_pos(size_t pitch, size_t x, size_t y, size_t bytes_per_step = 4) {
     return y * pitch + x * bytes_per_step;
 }
-size_t alib_va_arg_length(const char* fmt, ...) {
+_ALIB_FQUAL size_t alib_va_arg_length(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = snprintf(NULL, 0, fmt, args);
     va_end(args);
     return bufsz;
 }
-size_t alib_va_arg_length(const char* fmt, va_list args) {
+_ALIB_FQUAL size_t alib_va_arg_length(const char* fmt, va_list args) {
     size_t bufsz = snprintf(NULL, 0, fmt, args);
     return bufsz;
 
 }
 
-// Note: you're expected to supply an empty pointer & manage memory after this!
-void alib_va_arg_parse(char* buf, const char* fmt, ...) {
+// Note: you're expected to supply an empty pointer & manage memory after this! It uses malloc, not new.
+_ALIB_FQUAL void alib_va_arg_parse(char* buf, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = snprintf(NULL, 0, fmt, args);
@@ -610,12 +928,12 @@ void alib_va_arg_parse(char* buf, const char* fmt, ...) {
     vsprintf((char*)buf, fmt, args);
     va_end(args);
 }
-void alib_va_arg_parse(char* buf, const char* fmt, va_list args) {
+_ALIB_FQUAL void alib_va_arg_parse(char* buf, const char* fmt, va_list args) {
     size_t bufsz = snprintf(NULL, 0, fmt, args);
     buf = (char*)malloc(bufsz + 1);
     vsprintf((char*)buf, fmt, args);
 }
-const char* alib_va_arg_parse(const char* fmt, ...) {
+_ALIB_FQUAL const char* alib_va_arg_parse(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = snprintf(NULL, 0, fmt, args);
@@ -624,38 +942,88 @@ const char* alib_va_arg_parse(const char* fmt, ...) {
     va_end(args);
     return _buf;
 }
-const char* alib_va_arg_parse(const char* fmt, va_list args) {
+_ALIB_FQUAL const char* alib_va_arg_parse(const char* fmt, va_list args) {
     size_t bufsz = snprintf(NULL, 0, fmt, args);
     const char* _buf = (const char*)malloc(bufsz);
     vsprintf((char*)_buf, fmt, args);
     return _buf;
 }
-const char* alib_strfmt(const char* fmt, ...) {
+_ALIB_FQUAL const char* alib_strfmtv(const char* fmt, va_list args) {
+    size_t bufsz = snprintf(NULL, 0, fmt, args);
+    const char* _buf = (const char*)malloc(bufsz);
+    vsprintf((char*)_buf, fmt, args);
+    return _buf;
+}
+_ALIB_FQUAL char* alib_strfmt(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = 0;
-    bufsz = snprintf(NULL, 0, fmt, args);
-    const char* _buf = (const char*)malloc(bufsz);
-    vsprintf((char*)_buf, fmt, args);
+    bufsz = vsnprintf(NULL, 0, fmt, args);
+    char* _buf = (char*)malloc(bufsz);
+    vsprintf(_buf, fmt, args);
+    va_end(args);
+    return _buf;
+}
+_ALIB_FQUAL std::string alib_strfmts(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    size_t bufsz = 0;
+    bufsz = vsnprintf(NULL, 0, fmt, args);
+    char* _buf = (char*)malloc(bufsz);
+    vsprintf(_buf, fmt, args);
     va_end(args);
     return _buf;
 }
 
-
-va_list alib_va_list_parse(char padding = 0, ...) {
-    va_list args;
-    va_start(args, padding);
-    va_end(args);
-    return args;
+_ALIB_FQUAL std::string alib_strfmtsv(const char* fmt, va_list args) {
+    std::string out;
+    size_t bufsz = 0;
+    bufsz = vsnprintf(NULL, 0, fmt, args);
+    char* _buf = new char[bufsz] {'\0'};
+    vsprintf(_buf, fmt, args);
+    out.append(_buf);
+    return out;
+}
+_ALIB_FQUAL float alib_lerp_low(float a, float b, float f)
+{
+    return a + f * (b - a);
 }
 
+_ALIB_FQUAL float alib_lerp(float a, float b, float f) {
+    return (a * (1.0f - f)) + (b * f);
+}
+_ALIB_FQUAL float alib_clerp(float a, float b, float f) {
+    float o = (a * (1.0f - f)) + (b * f);
+    if (o < a) { return a; }
+    if (o > b) { return b; }
+    return o;
+}
+_ALIB_FQUAL const char* alib_chrrepl(const char* in, char match, char repl_value) {
+    while (*(in++)) {
+        if (*in == match) {
+            (*(char*)in) = repl_value;
+        }
+    }
+    return in;
+}
 // Copies the sign-ed ness of A into B
-void alib_copy_signed(signed int a, signed int* b) {
+_ALIB_FQUAL void alib_copy_signed(signed int a, signed int* b) {
     *b = (a < 0) ? -*b : (*b < 0) ? -*b : *b;
+}
+template <typename T>
+_ALIB_FQUAL void alib_clampptr(T* out, T lower, T upper) {
+    *out =
+        (*out <= lower) ? lower : // out <= lower : return lower
+        (*out <= upper) ? *out :  // out <= upper : return out
+        upper;                     // out >  upper : return upper
+}
+template <typename T>
+_ALIB_FQUAL T alib_clamp(T n, T lower, T upper) {
+    return n <= lower ? lower : n <= upper ? n : upper;
 }
 #include <codecvt>
 #include <locale>
-std::wstring convert_wstr(std::string str) {
+_ALIB_FQUAL std::wstring convert_wstr(std::string str) {
     std::wstring str2(str.length(), L' '); // Make room for characters
     std::copy(str.begin(), str.end(), str2.begin());
     return str2;
@@ -669,7 +1037,7 @@ std::wstring convert_wstr(std::string str) {
 #include <iterator>     // back_inserter
 #include <iomanip>
 
-void alib_split(std::string arr, std::string del, std::vector<std::string>* out)
+_ALIB_FQUAL void alib_split(std::string arr, std::string del, std::vector<std::string>* out)
 {
     size_t start = 0;
     size_t end = arr.find(del);
@@ -680,8 +1048,19 @@ void alib_split(std::string arr, std::string del, std::vector<std::string>* out)
     }
     out->push_back(arr.substr(start, end - start));
 }
+_ALIB_FQUAL void alib_split_quoted(std::string arr, std::vector<std::string>* out)
+{
+    size_t start = 0;
+    size_t end = arr.find("\"");
+    while (end != -1) {
+        out->push_back(arr.substr(start, end - start));
+        start = end + 1;
+        end = arr.find("\"", start);
+    }
+    out->push_back(arr.substr(start, end - start));
+}
 
-std::vector<std::string> alib_split(const std::string& s, char delim) {
+_ALIB_FQUAL std::vector<std::string> alib_split(const std::string& s, char delim) {
     std::stringstream ss(s);
     std::string item;
     std::vector<std::string> elems;
@@ -691,7 +1070,7 @@ std::vector<std::string> alib_split(const std::string& s, char delim) {
     }
     return elems;
 }
-void alib_strsplit(std::string& str, char delim, std::vector<std::string>& out)
+_ALIB_FQUAL void alib_strsplit(std::string& str, char delim, std::vector<std::string>& out)
 {
     size_t start;
     size_t end = 0;
@@ -706,19 +1085,7 @@ void alib_strsplit(std::string& str, char delim, std::vector<std::string>& out)
         out.push_back(str.substr(start, end - start));
     }
 }
-// Note: ONLY supports ' ' as a delimeter!
-void alib_split_quoted(std::string arr, std::vector<std::string>* out) {
-
-    std::istringstream iss{ arr };
-    std::string tmp;
-
-    while (iss >> std::quoted(tmp)) {
-        out->push_back(tmp);
-    }
-
-}
-
-std::string alib_str_hex(std::string s) {
+_ALIB_FQUAL std::string alib_str_hex(std::string s) {
 
     std::stringstream s1;
     for (int i = 0; i < s.length(); i++) {
@@ -727,7 +1094,7 @@ std::string alib_str_hex(std::string s) {
 
     return s1.str();
 }
-std::string alib_int_hex(long l) {
+_ALIB_FQUAL std::string alib_int_hex(long l) {
     std::stringstream stream;
     stream << std::hex << l;
     return std::string(stream.str());
@@ -737,41 +1104,42 @@ std::string alib_int_hex(long l) {
 #include <algorithm>
 
 //  Lowercases string
-std::string alib_lower(const char* s)
+_ALIB_FQUAL std::string alib_lower(const char* s)
 {
     std::string s2 = s;
     std::transform(s2.begin(), s2.end(), s2.begin(), tolower);
     return s2;
 }
-std::string alib_lowers(std::string s)
+_ALIB_FQUAL std::string alib_lowers(std::string s2)
 {
-    std::string s2 = s;
     std::transform(s2.begin(), s2.end(), s2.begin(), tolower);
     return s2;
 }
 
 
 // Uppercases string
-std::string alib_upper(const char* s)
+_ALIB_FQUAL std::string alib_upper(const char* s)
 {
     std::string s2 = s;
+    std::transform(s2.begin(), s2.end(), s2.begin(), toupper);
+    return s2;
+}
+_ALIB_FQUAL std::string alib_uppers(std::string s2)
+{
     std::transform(s2.begin(), s2.end(), s2.begin(), toupper);
     return s2;
 }
 
-std::string alib_uppers(std::string s)
-{
-    std::string s2 = s;
-    std::transform(s2.begin(), s2.end(), s2.begin(), toupper);
-    return s2;
-}
-int alib_percent(long double num, double percent) {
+_ALIB_FQUAL double alib_percent(long double num, double percent) {
     long double _n_d100 = (num / 100);
-    return lroundl( _n_d100 * percent);
+    return lroundl(_n_d100 * percent);
+}
+_ALIB_FQUAL float alib_percentf(float num, float percent) {
+    float _n_d100 = (num * 0.01);
+    return lroundf(_n_d100 * percent);
 }
 
-
-int alib_percents(int base, std::string percent_str) {
+_ALIB_FQUAL int alib_percents(int base, std::string percent_str) {
     if ((alib_endswith(percent_str.c_str(), "%"))) percent_str.erase(percent_str.end());
     int percent = atoi(percent_str.c_str());
     return alib_percent(base, percent);
@@ -785,7 +1153,7 @@ template<typename T> struct alib_is_shared_ptr<std::shared_ptr<T>> : std::true_t
 
 
 template <typename T>
-void alib_remove_any_of(std::vector<T> _v, T vy) {
+_ALIB_FQUAL void alib_remove_any_of(std::vector<T> _v, T vy) {
     for (int i = 0; i < _v.size(); i++) {
         if (_v.at(i) == vy) {
             _v.erase(_v.begin() + i);
@@ -794,18 +1162,15 @@ void alib_remove_any_of(std::vector<T> _v, T vy) {
     _v.shrink_to_fit();
 }
 
-
-#include <any>
-#include <typeinfo>
 template <typename T>
-T& alib_get_if_any(std::any _ta) {
-    if (alib_streq(typeid(T).name(), _ta.type().name())) {
-        return std::any_cast<T>(_ta);
+_ALIB_FQUAL bool alib_contains_any_of(std::vector<T> _v, T vy) {
+    for (int i = 0; i < _v.size(); i++) {
+        if (_v.at(i) == vy) {
+            return true;
+        }
     }
-    return _ta._Cast();
+    return false;
 }
-
-
 
 #endif // ALIB_NO_BYTE_UTILS
 
@@ -837,21 +1202,21 @@ T& alib_get_if_any(std::any _ta) {
 #include <vector>
 #include <map>
 template <typename T>
-void alib_invalidatev(std::vector<T> __v) {
+_ALIB_FQUAL void alib_invalidatev(std::vector<T> __v) {
     for (int i = 0; i < __v.size(); i++) {
-        delete &__v.at(i);
+        delete& __v.at(i);
     }
     __v.clear();
 }
 template <typename K = std::string, typename V>
-void alib_invalidatem(std::map<K, V> m) {
+_ALIB_FQUAL void alib_invalidatem(std::map<K, V> m) {
     for (const auto& kv : m) {
         delete kv.second;
     }
     m.clear();
 }
 template <typename V_T>
-void alib_remove_if(std::vector<V_T> _vec, std::function<bool(V_T)> _p) {
+_ALIB_FQUAL void alib_remove_if(std::vector<V_T> _vec, std::function<bool(V_T)> _p) {
     for (int i = 0; i < _vec.size(); i++) {
         if (_p(_vec.at(i))) {
             _vec.erase(_vec.begin() + i);
@@ -862,22 +1227,70 @@ void alib_remove_if(std::vector<V_T> _vec, std::function<bool(V_T)> _p) {
 #include <thread>
 #define alib_sleep_micros(micros) std::this_thread::sleep_for(std::chrono::microseconds(micros));
 #define alib_sleep_millis(millis) std::this_thread::sleep_for(std::chrono::milliseconds(millis));
-#define alib_sleep_second(second) std::this_thread::sleep_for(std::chrono::seconds(second));
+#define alib_sleep_second(second) std::this_thread::sleep_for(std::chrono::microseconds(second));
+// T should be a numeric or a numeric-like object.
+// Average of a numeric type. Defaults to the average of 2 objects.
+template <typename T, int max_elements = 2> struct alib_average {
+    int length = max_elements;
+    ALStack<T> m_stack;
+    void add(T element) {
+        if (m_stack.size() >= length) {
+            m_stack.pop_back();
+        }
+        m_stack.push_front(element);
+    }
+    T get() {
+        T sum = 0;
+        int amt = 0;
+        for (int i = 0; i < length && i < m_stack.size(); i++) {
+            sum += *(m_stack.Data + i);
+            amt++;
+        }
+        if (amt)
+            return sum / amt;
+        return 0;
+    }
+};
 
 #endif // __lib_aveth_utils_hpp
 
 
 // begin preprocessor defs that need to be explicitly defined
-#if defined(ALIB_ANDROID_LOGGING) && !defined(alib_android_logging_helper__)
+#if defined(ALIB_ANDROID) && !defined(alib_android_logging_helper__)
 #define alib_android_logging_helper__
-#ifndef PROJECT_NAME
-#define PROJECT_NAME "UnnamedAndroidProject (DEFINE USING #define PROJECT_NAME '')"
+#if !defined(ALIB_PROJECT_NAME)
+#define ALIB_PROJECT_NAME "UnnamedAndroidProject (DEFINE USING #define ALIB_PROJECT_NAME '')"
 #endif
-#define A_LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, PROJECT_NAME, __VA_ARGS__))
-#define A_LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, PROJECT_NAME, __VA_ARGS__))
-#define A_LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, PROJECT_NAME, __VA_ARGS__))
-#define A_LOGF(...) ((void)__android_log_print(ANDROID_LOG_FATAL, PROJECT_NAME, __VA_ARGS__))
-#define A_LOGV(...) ((void)__android_log_print(ANDROID_LOG_VERBOSE, PROJECT_NAME, __VA_ARGS__))
+_ALIB_FQUAL int android_fread(void* cookie, char* buf, int size) {
+    return AAsset_read((AAsset*)cookie, buf, size);
+}
+
+_ALIB_FQUAL int android_fwrite(void* cookie, const char* buf, int size) {
+    return EACCES; // can't provide write access to the apk
+}
+
+_ALIB_FQUAL fpos_t android_fseek(void* cookie, fpos_t offset, int whence) {
+    return AAsset_seek((AAsset*)cookie, offset, whence);
+}
+
+_ALIB_FQUAL int android_fclose(void* cookie) {
+    AAsset_close((AAsset*)cookie);
+    return 0;
+}
+_ALIB_FQUAL long android_ftell(void* cookie) {
+    return AAsset_getLength64((AAsset*)cookie);
+}
+_ALIB_FQUAL FILE* android_fopen(const char* fname, AAssetManager* _mgr) {
+    AAsset* asset = AAssetManager_open(_mgr, fname, 0);
+    if (!asset) return NULL;
+
+    return funopen(asset, android_fread, android_fwrite, android_fseek, android_fclose);
+}
+#define alib_LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, ALIB_PROJECT_NAME, __VA_ARGS__))
+#define alib_LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, ALIB_PROJECT_NAME, __VA_ARGS__))
+#define alib_LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, ALIB_PROJECT_NAME, __VA_ARGS__))
+#define alib_LOGF(...) ((void)__android_log_print(ANDROID_LOG_FATAL, ALIB_PROJECT_NAME, __VA_ARGS__))
+#define alib_LOGV(...) ((void)__android_log_print(ANDROID_LOG_VERBOSE, ALIB_PROJECT_NAME, __VA_ARGS__))
 #endif
 
 // Create macros to emulate "public T N = V" used in other languages
@@ -909,7 +1322,7 @@ void alib_remove_if(std::vector<V_T> _vec, std::function<bool(V_T)> _p) {
 //
 // nlohmann/json utilities
 //
-#if defined(ALIB_JSON_NLOHHMAN) && (!defined(alib_json_utilities__included_))
+#if defined(INCLUDE_NLOHMANN_JSON_HPP_) && (!defined(alib_json_utilities__included_))
 #define alib_json_utilities__included_
 // nlohhman/json included, or alib_force_json defined use these utilities
 
@@ -927,9 +1340,7 @@ double alib_j_getd(JSONREF j) {
     return j.get<double>();
 }
 std::string alib_j_getstr(JSONREF j) {
-    if (j.is_string()) {
-        return j.get<std::string>();
-    } return "";
+    return j.get<std::string>();
 }
 const char* alib_j_getchara(JSONREF j) {
     return alib_j_getstr(j).c_str();
@@ -942,7 +1353,7 @@ bool alib_j_streq(JSONREF j, std::string match) {
 bool alib_j_costr(JSONREF j, std::string match) {
     if (j.is_array()) {
         for (int i = 0; i < j.size(); i++) {
-            if (j.at(i).get<std::string>().compare(match.c_str()) == 0) { return true; };
+            if (j[i].get<std::string>().compare(match.c_str()) == 0) { return true; };
         }
     }
     // If j_ty = array : the following will always return false.
@@ -971,9 +1382,9 @@ bool alib_j_cokeys(___alib__json j, std::string _s) {
         j_t = j_t.at(s_cur);
     }
     return true;
+
 }
 #undef JSONREF
-#undef _CRT_SECURE_NO_WARNINGS
 
 #endif
 

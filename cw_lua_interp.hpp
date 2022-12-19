@@ -34,10 +34,14 @@ struct lu_SDL_Window_impl {
 	std::string __name = "Unnamed Game";
 	bool debug = true;
 	bool debug_window_open = true;
+	bool is_editor = false;
+	bool debug_window_active = true;
 	void Update() {
 		SDL_SetWindowTitle(__win, __name.c_str());
 		Window::WindowInstance->debug = this->debug;
 		Window::WindowInstance->debug_window_open = this->debug_window_open;
+		this->debug_window_active = Window::WindowInstance->debug_window_active;
+		this->is_editor = getbitv(Window::WindowInstance->data, 8) != 0;
 	}
 	//std::string __get_name() { return __name; }
 	//void __set_name(std::string ___name) { this->__name = ___name; }
@@ -50,7 +54,7 @@ double* _lu_deltaTime;
 double* _lu_deltaTimeUS;
 double* _lu_deltaTimeSCALE;
 double* _lu_deltaTimefps;
-void guiRenderTaskImpl();
+void __lu_RenderTaskImpl();
 void initDataLua(SDL_Renderer* renderOBJ, SDL_Window* __winObj, double* _ludt, double* _ludtsc, double* _ludtus, double* _ludt_fps) {
 	__sdlWindow = __winObj;
 	__sdlRenderer = renderOBJ;
@@ -93,46 +97,39 @@ void lu_cw_reloadScene() {
 	}
 }
 struct lu_col {
-	std::array<char, 4> cols;
-	char getR() { return cols[0]; }
-	char getG() { return cols[1]; }
-	char getB() { return cols[2]; }
-	char getA() { return cols[3]; }
-
+	int r, g, b, a;
 	// Needs to fit AT LEAST 32 bits
 	void setColorL(int32_t c) {
-		cols[0] = alib_get_byte(&c, 0);
-		cols[1] = alib_get_byte(&c, 1);
-		cols[2] = alib_get_byte(&c, 2);
-		cols[3] = alib_get_byte(&c, 3);
+		r = alib_get_byte(&c, 0);
+		g = alib_get_byte(&c, 1);
+		b = alib_get_byte(&c, 2);
+		a = alib_get_byte(&c, 3);
 	}
-	void setColor(lu_col _c) {
-		cols = _c.cols;
+	lu_col(int _r, int _g, int _b, int _a = 255) { 
+		r = _r;
+		g = _g;
+		b = _b;
+		a = _a;
 	}
 };
 void lu_logerr(std::string str) {
-	cwError::sstate(cwError::CW_ERROR);
-	cwError::serror(str.c_str());
+	Win->cons.pushlnf("%serr : %s" + str, ImRGB(255,128,128).tostring(), ImRGB::resetstr());
 };
 void lu_logsil(std::string str) {
-	cwError::sstate(cwError::CW_NONE);
-	cwError::serror(str.c_str());
+	printf(str.c_str());
 };
 void lu_logdeb(std::string str) {
-	cwError::sstate(cwError::CW_DEBUG);
-	cwError::serror(str.c_str());
+	Win->cons.pushlnf("%sdebug : %s" + str, ImRGB(200, 200, 128).tostring(), ImRGB::resetstr());
 };
 void lu_logmsg(std::string str) {
 	cwError::sstate(cwError::CW_MESSAGE);
 	cwError::serror(str.c_str());
 };
 void lu_logwrn(std::string str) {
-	cwError::sstate(cwError::CW_WARN);
-	cwError::serror(str.c_str());
+	Win->cons.pushlnf("%swarn : %s" + str, ImRGB(255, 255, 128).tostring(), ImRGB::resetstr());
 };
 void lu_logvrb(std::string str) {
-	cwError::sstate(cwError::CW_VERBOSE);
-	cwError::serror(str.c_str());
+	Win->cons.pushlnf("%swarn : %s" + str, ImRGB(160, 160, 200).tostring(), ImRGB::resetstr());
 };
 #define alu_global luabridge::getGlobalNamespace(state)
 void do_n(int amt, std::function<void()> __run) {
@@ -141,9 +138,13 @@ void do_n(int amt, std::function<void()> __run) {
 	}
 }
 std::map<std::string, const luabridge::LuaRef> __lu_preupdate__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_prerender__funcs;
 std::map<std::string, const luabridge::LuaRef> __lu_update__funcs;
 std::map<std::string, const luabridge::LuaRef> __lu_postupdate__funcs;
 std::map<std::string, const luabridge::LuaRef> __lu_start__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_render__funcs;
+std::map<std::string, const luabridge::LuaRef> __lu_on_interact_funcs;
+std::unordered_map < std::string, const luabridge::LuaRef > __lu_on_collide_funcs;
 void lu_cw_add_preu(std::string __name, const luabridge::LuaRef __preufunc) {
 	__lu_preupdate__funcs.insert({ __name, __preufunc});
 }
@@ -157,9 +158,25 @@ void lu_cw_add_start(std::string __name, const luabridge::LuaRef __sfunc) {
 	__lu_start__funcs.insert({ __name, __sfunc});
 }
 
+void lu_cw_add_prer(std::string __name, const luabridge::LuaRef __preufunc) {
+	__lu_prerender__funcs.insert({ __name, __preufunc });
+}
+void lu_cw_add_render(std::string __name, const luabridge::LuaRef __preufunc) {
+	__lu_render__funcs.insert({ __name, __preufunc });
+}
+void lu_cw_add_on_interact(std::string col_id, const luabridge::LuaRef __preufunc) {
+	__lu_on_interact_funcs.insert({ col_id, __preufunc });
+}
+
+void lu_cw_add_on_collide(std::string source_collider, std::string on_collide_id, const luabridge::LuaRef __preufunc) {
+	__lu_on_collide_funcs.insert({ (source_collider + on_collide_id) , __preufunc });
+}
 
 void lu_cw_del_preu(std::string __name) {
 	__lu_preupdate__funcs.erase(__name);
+}
+void lu_cw_del_render(std::string __name) {
+	__lu_render__funcs.erase(__name);
 }
 void lu_cw_del_update(std::string __name) {
 	__lu_update__funcs.erase(__name);
@@ -170,6 +187,35 @@ void lu_cw_del_postu(std::string __name) {
 void lu_cw_del_start(std::string __name) {
 	__lu_start__funcs.erase(__name);
 }
+void lu_cw_del_prer(std::string __name) {
+	__lu_prerender__funcs.erase(__name);
+}
+void lu_cw_del_on_interact(std::string __name) {
+	__lu_on_interact_funcs.erase(__name);
+}
+void lu_cw_del_on_collide(std::string col__name, std::string on_collide_id) {
+	__lu_on_collide_funcs.erase((col__name+on_collide_id));
+}
+
+std::function< void(RectCollider2d*, MeshLine*) > RectCollider2d::OnLineHit = [](RectCollider2d* _this, MeshLine* source) {
+	std::string v = _this->id + source->id;
+	if (__lu_on_collide_funcs.contains(v)) {
+		__lu_on_collide_funcs.at(v)();
+	}
+	else if (__lu_on_collide_funcs.contains(_this->id + "any")) {
+		__lu_on_collide_funcs.at(_this->id + "any")();
+	}
+};
+
+std::function< void(RectCollider2d*, RectCollider2d*) > RectCollider2d::OnColliderHit = [](RectCollider2d* _this, RectCollider2d* source) {
+	std::string v = _this->id + source->id;
+	if (__lu_on_collide_funcs.contains(v)) {
+		__lu_on_collide_funcs.at(v)();
+	}
+	else if (__lu_on_collide_funcs.contains(_this->id + "any")) {
+		__lu_on_collide_funcs.at(_this->id + "any")();
+	}
+};
 
 Window::Component __lu_component_impl;
 void lu_cw_start_func_impl() {
@@ -197,18 +243,31 @@ void lu_cw_preupdate_func_impl() {
 		if (_ref.isFunction()) { _ref(); }
 	}
 }
+void lu_cw_prerender_func_impl() {
+	for (int i = 0; i < __lu_prerender__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_prerender__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+}
+
+void lu_cw_render_func_impl() {
+	for (int i = 0; i < __lu_render__funcs.size(); i++) {
+		luabridge::LuaRef _ref = __lu_render__funcs.begin()++->second;
+		if (_ref.isFunction()) { _ref(); }
+	}
+	__lu_RenderTaskImpl();
+}
 
 luabridge::LuaRef __lu_on_move = 0;
 luabridge::LuaRef __lu_on_click = 0;
 luabridge::LuaRef __lu_on_keypress = 0;
 luabridge::LuaRef __lu_on_keyrelease = 0;
 luabridge::LuaRef __lu_on_keyhold = 0;
-
 void lu_do_on(const std::string& do_s, luabridge::LuaRef __func) {
-	printf("\na\n");
 	if (!__func.isFunction()) {
 		luaL_error(state, "function not found");
 	}
+
 	if (alib_costr(do_s, "key_press")) {
 		__lu_on_keypress = __func;
 		Window::WindowInstance->keyboard.onKeyPress = __lu_on_keypress;
@@ -221,11 +280,11 @@ void lu_do_on(const std::string& do_s, luabridge::LuaRef __func) {
 		__lu_on_keyhold = __func;
 		Window::WindowInstance->keyboard.onKeyHold = __lu_on_keyhold;
 	}
-	if (alib_costr(do_s, "click")) {
+	if (alib_costr(do_s, "mouse_click")) {
 		__lu_on_click = __func;
 		Window::WindowInstance->mouse.onClick = __lu_on_click;
 	}
-	if (alib_costr(do_s, "move")) {
+	if (alib_costr(do_s, "mouse_move")) {
 		__lu_on_move = __func;
 		Window::WindowInstance->mouse.onMove = __lu_on_move;
 	}
@@ -239,10 +298,39 @@ struct lu_SDL_Rect_impl : public SDL_Rect{
 	void set_bulk(int x, int y, int w, int h) { *this= { x,y,w,h }; }
 	std::array<int, 4> get_bulk() { return {this->x,this->y, this->w, this->h}; }
 };
-bool lu_cw_keydownf(int key) { return Window::WindowInstance->keyboard.GetKeyDown(key); }
-bool lu_cw_keyf(int key) { return Window::WindowInstance->keyboard.GetKey(key); }
+bool lu_cw_keypressedf(int key) { return Window::WindowInstance->keyboard.GetKeyPressed(key); }
+bool lu_cw_keydownf(int key) { return Window::WindowInstance->keyboard.GetKey(key); }
 bool lu_cw_keyupf(int key) { return !Window::WindowInstance->keyboard.GetKey(key); }
+bool lu_cw_keys_down(std::vector<int> keys) {
+	for (int i = 0; i < keys.size(); i++) {
+		if (!Window::WindowInstance->keyboard.GetKey(keys[i])) { return false; }
+	}
+	return true;
+}
+bool lu_cw_keys_up(std::vector<int> keys) {
+	for (int i = 0; i < keys.size(); i++) {
+		if (Window::WindowInstance->keyboard.GetKey(keys[i])) { return false; }
+	}
+	return true;
+}
 
+std::vector<std::function<void()>> __renderTasks;
+
+RectCollider2d* lu_new_froms(Sprite* sprite, int __layer) {
+	RectCollider2d* r_re = new RectCollider2d();
+	r_re->rect = sprite->rect;
+	r_re->recalc();
+	r_re->layer = __layer;
+	return r_re;
+}
+
+Vector2 lu_cw_get_cursor_pos() { return {(double)Window::WindowInstance->mouse.x, (double)Window::WindowInstance->mouse.y }; }
+Vector2 lu_cw_get_cursor_delta() { return { (double)Window::WindowInstance->mouse.dx, (double)Window::WindowInstance->mouse.dy }; }
+bool lu_cw_get_mouse_ld() { return Window::WindowInstance->mouse.m1d; }
+bool lu_cw_get_mouse_md() { return Window::WindowInstance->mouse.m2d; }
+bool lu_cw_get_mouse_rd() { return Window::WindowInstance->mouse.m3d; }
+bool lu_cw_get_mouse_t1d() { return Window::WindowInstance->mouse.mt1d; }
+bool lu_cw_get_mouse_t2d() { return Window::WindowInstance->mouse.mt2d; }
 Vector lu_cw_vector__get(Vector const& _v) { return _v; }
 void lu_cw_vector__set(Vector & _vec, double _vec_val) { _vec = _vec_val; }
 double lu_get_dt_scaled() { return *_lu_deltaTime; }
@@ -254,45 +342,73 @@ alib_inline_run _nn([&]() {
 	__lu_component_impl.Update = &lu_cw____update_func_impl;
 	__lu_component_impl.PreUpdate = &lu_cw_preupdate_func_impl;
 	__lu_component_impl.PostUpdate = &lu_cw_posupdate_func_impl;
+	__lu_component_impl.PreRender = &lu_cw_prerender_func_impl;
+	__lu_component_impl.Render = &lu_cw_render_func_impl;
 	initLUA(state);
-
 	luaL_openlibs(state);
 	luaopen_base(state);
 	deleteGlobalLua(state, "utf8");
 	assignInputData(alu_global);
 	alu_global.beginNamespace("input")
-		
-		.addFunction("key_pressed", &lu_cw_keydownf)
+		.addFunction("key_pressed", &lu_cw_keypressedf)
 		.addFunction("key_up", &lu_cw_keyupf)
-		.addFunction("key_down", &lu_cw_keyf)
+		.addFunction("key_down", &lu_cw_keydownf)
+		.addFunction("keys_down", lu_cw_keys_down)
+		.addFunction("keys_up", lu_cw_keys_up)
+		.beginNamespace("mouse")
+			.addProperty("position", &lu_cw_get_cursor_pos)
+			.addProperty("delta", &lu_cw_get_cursor_delta)
+			.addProperty("left", &lu_cw_get_mouse_ld)
+			.addProperty("right", &lu_cw_get_mouse_rd)
+			.addProperty("middle", &lu_cw_get_mouse_md)
+		.endNamespace()
 	.endNamespace();
+	
 	setGlobalLuaNum(state, "c_empty", COL_EMPTY);
 	setGlobalLuaNum(state, "c_player", COL_PLAYER);
 	setGlobalLuaNum(state, "c_entity", COL_ENT);
 	setGlobalLuaNum(state, "c_object", COL_OBJ);
 	setGlobalLuaNum(state, "c_trigger", COL_TRG);
 	setGlobalLuaNum(state, "c_solid", COL_SOLID);
+	setGlobalLuaNum(state, "COL_EMPTY", COL_EMPTY);
+	setGlobalLuaNum(state, "COL_PLAYER", COL_PLAYER);
+	setGlobalLuaNum(state, "COL_ENTITY", COL_ENT);
+	setGlobalLuaNum(state, "COL_OBJECT", COL_OBJ);
+	setGlobalLuaNum(state, "COL_TRIGGER", COL_TRG);
+	setGlobalLuaNum(state, "COL_SOLID", COL_SOLID);
+	
 	alu_global.beginClass<lu_SDL_Window_impl>("WindowImpl")
 		.addData("name", &lu_SDL_Window_impl::__name)
 		.addData("debug", &lu_SDL_Window_impl::debug)
 		.addData("debug_window", &lu_SDL_Window_impl::debug_window_open)
+		.addData("debug_window_active", &lu_SDL_Window_impl::debug_window_active, false)
+		.addData("is_editor", &lu_SDL_Window_impl::is_editor, false)
 	.endClass();
-//	alu_global.beginClass<Vector>("Vector")
-//		.addFunction("new", &Vector::lu_new)
-//		.addFunction("__index", &Vector::lu_get)
-//		.addFunction("__newindex", &Vector::lu_set)
-//		.addFunction("__concat", &Vector::lu_concat)
-//		.addStaticFunction("distance", &Vector::distance)
-//		.endClass();
 	alu_global.beginClass<Vector2>("Vector2")
 		.addStaticFunction("new", &Vector2::lu_new) // ctor
 		.addConstructor<Vector2(*)(int, int)>()
 		.addStaticFunction("distance", &Vector2::distance)
 		.addData("x", &Vector2::x)
 		.addData("y", &Vector2::y)
+		.addStaticData("up", &Vector2::up, false)
+		.addStaticData("right", &Vector2::right, false)
 		.addStaticFunction("invert", &Vector2::lu_invert)
 		.addStaticFunction("abs", &Vector2::lu_abs)
-		.endClass();
+		.addFunction("magnitude", &Vector2::magnitude)
+		.addFunction("normalize", &Vector2::normalize)
+		.addStaticFunction("cross", &Vector2::cross)
+		.addStaticFunction("dot", &Vector2::dot)
+		.addStaticFunction("angle", &Vector2::angle)
+		.addFunction("clamp_magnitude", &Vector2::clamp_magnitude)
+		.addFunction("__add", &Vector2::luaL__add)
+		.addFunction("__sub", &Vector2::luaL__sub)
+		.addFunction("__mul", &Vector2::luaL__mul)
+		.addFunction("__div", &Vector2::luaL__div)
+		.addFunction("__unm", &Vector2::luaL__unm)
+		.addFunction("__eq", &Vector2::luaL__eq)
+		.addFunction("__lt", &Vector2::luaL__lt)
+		.addFunction("__le", &Vector2::luaL__le)
+	.endClass();
 	alu_global.beginClass<MeshLine>("Line")
 		.addConstructor<void(*)(double, double, double, double)>()
 		.addConstructor<void(*)(Vector2, Vector2)>()
@@ -301,8 +417,8 @@ alib_inline_run _nn([&]() {
 		.addData("end", &MeshLine::end)
 		.addData("layer", &MeshLine::layer)
 		.addData("id", &MeshLine::coll_id)
-		.addFunction("set_freestanding", &MeshLine::setFreestanding)
-		.addFunction("erase_freestanding", &MeshLine::eraseFreestanding)
+		.addFunction("set_freestanding", &MeshLine::set_freestanding)
+		.addFunction("erase_freestanding", &MeshLine::erase_freestanding)
 		.endClass();
 	alu_global.beginClass<VectorRect>("Rect")
 		.addStaticFunction("new", &VectorRect::lu_new)
@@ -313,15 +429,16 @@ alib_inline_run _nn([&]() {
 		.addData("h", &VectorRect::h)
 		.addStaticFunction("intersects", &VectorRect::lu_intersects)
 		.endClass();
-	alu_global.beginNamespace("ctypes")
+	alu_global.beginClass<SDL_Rect>("SDL_Rect")
+		.addData("x", &SDL_Rect::x)
+		.addData("y", &SDL_Rect::y)
+		.addData("w", &SDL_Rect::w)
+		.addData("h", &SDL_Rect::h)
+		.addConstructor<SDL_Rect* (*)(int, int, int, int)>()
+	.endClass();
 
-		.beginClass<SDL_Rect>("SDL_Rect")
-			.addData("x", &SDL_Rect::x)
-			.addData("y", &SDL_Rect::y)
-			.addData("w", &SDL_Rect::w)
-			.addData("h", &SDL_Rect::h)
-			.addConstructor<SDL_Rect*(*)(int,int,int,int)>()
-		.endClass()
+	alu_global.beginNamespace("cdecl")
+		.addConstant("NDEBUG", NDEBUG)
 	.endNamespace();
 	alu_global.beginClass<Transform>("Transform")
 		.addData("angle", &Transform::angle)
@@ -335,7 +452,14 @@ alib_inline_run _nn([&]() {
 		.addData("centered", &Sprite::center)
 		.addData("enabled", &Sprite::enabled)
 		.addData("name", &Sprite::name)
-		.addData("id", &Sprite::identifier)
+		.addProperty("id", 
+			std::function <std::string(const Sprite*)>([](const Sprite* s) {
+				return std::string(s->identifier, 40);
+			}),
+			std::function <void(Sprite*, std::string)>([](Sprite* s, std::string id) {
+				s->setID(id);
+			})
+		)
 		.addData("is_rendering", &Sprite::isRendering)
 		.addData("center_position", &Sprite::center_position)
 		.addData("layer", &Sprite::layer)
@@ -357,15 +481,29 @@ alib_inline_run _nn([&]() {
 		.addFunction("add_pre_update", &lu_cw_add_preu)
 		.addFunction("add_update", &lu_cw_add_update)
 		.addFunction("add_post_update", &lu_cw_add_postu)
+		.addFunction("add_pre_render", &lu_cw_add_prer)
+		.addFunction("delete_pre_render", &lu_cw_del_prer)
+		.addFunction("add_render_task", &lu_cw_add_render)
+		.addFunction("delete_render_task", &lu_cw_del_render)
 		.addFunction("delete_start", &lu_cw_del_start)
 		.addFunction("delete_pre_update", &lu_cw_del_preu)
 		.addFunction("delete_update", &lu_cw_del_update)
 		.addFunction("delete_post_update", &lu_cw_del_postu)
 		.addFunction("get_window", &lu_cw_get_window)
 		.addFunction("on", &lu_do_on)
+		.addFunction("add_interaction", &lu_cw_add_on_interact)
+		.addFunction("delete_interaction", &lu_cw_del_on_interact)
+		.addFunction("add_collision", &lu_cw_add_on_collide)
+		.addFunction("delete_collision", &lu_cw_del_on_collide)
+		.addFunction("m_runInteraction", std::function <bool(std::string)>([](std::string id) -> bool{
+			if (!__lu_on_interact_funcs.contains(id)) { return false; }
+			__lu_on_interact_funcs.at(id)();
+			return true;
+		}))
 		.beginNamespace("Camera")
 			.addProperty("position", Camera::lu_GetPosition, Camera::lu_SetPosition)
 			.addFunction("target", Camera::lu_SetTarget)
+			.addProperty("zoom", Camera::lu_GetScale, Camera::lu_SetScale)
 		.endNamespace()
 	.endNamespace();
 
@@ -383,18 +521,28 @@ alib_inline_run _nn([&]() {
 	.endNamespace();
 	alu_global.beginNamespace("console")
 		.addFunction("log", &lu_logmsg)
-		.addFunction("error", &lu_logmsg)
-		.addFunction("warn", &lu_logerr)
+		.addFunction("error", &lu_logerr)
+		.addFunction("warn", &lu_logwrn)
 		.addFunction("debug", &lu_logdeb)
+		.addFunction("cout", &lu_logsil)
 	.endNamespace();
 	alu_global
 		.addFunction("print", &lu_logsil) // Override print, and have it print to the debug console.
 	;
 	alu_global.beginClass<RectCollider2d>("RectCollider")
 		.addStaticFunction("new", &RectCollider2d::lu_new_fromi)
+		.addStaticFunction("new_centered", &RectCollider2d::lu_new_fromic)
 		.addStaticFunction("from_rect", &RectCollider2d::lu_new_fromr)
+		.addStaticFunction("from_sprite", &lu_new_froms)
 		.addData("layer", &RectCollider2d::layer)
-		.addData("id", &RectCollider2d::coll_id)
+		.addProperty("id",
+			std::function <std::string(const RectCollider2d*)>([](const RectCollider2d* s) {
+				return s->id;
+				}),
+			std::function <void(RectCollider2d*, std::string)>([](RectCollider2d* s, std::string id) {
+					s->id = id;
+				})
+		)
 		.addProperty("x",
 			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->x; }),
 			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->x = v; })
@@ -422,16 +570,29 @@ alib_inline_run _nn([&]() {
 		.addFunction("any_circle", &Collider::Raycast::TestAnyCircle)
 		.addFunction("any_cone", &Collider::Raycast::TestAnyCone)
 	.endNamespace();
+	alu_global.beginNamespace("RaycastHit")
+		.addVariable("start", &Collider::Hit::start, false)
+		.addVariable("end", &Collider::Hit::end, false)
+		.addVariable("length", &Collider::Hit::length, false)
+		.addVariable("pos", &Collider::Hit::pos, false)
+		.addVariable("hasHit", &Collider::Hit::hasHit, false)
+		.addVariable("layer", &Collider::Hit::layer, false)
+		.addVariable("id", &Collider::Hit::col_id, false)
+	.endNamespace();
 
 
 	alu_global.beginNamespace("math")
 		.addFunction("lerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
 			return (start + (end - start) * percent);
 		}))
+		.addFunction("clerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
+			return alib_clamp((start + (end - start) * percent), start, end);
+		}))
 	.endNamespace();
 	alu_global.beginClass<AudioWAV>("Audio")
 		.addFunction("name", &AudioWAV::name)
-		.addStaticFunction("new", &AudioWAV::lu_new)
+		.addConstructor<AudioWAV*(*)(std::string)>()
+		//.addStaticFunction("new", &AudioWAV::lu_new)
 		.addFunction("end", &AudioWAV::operator~)
 		.addFunction("play", &AudioWAV::Play)
 		.addFunction("stop", &AudioWAV::Stop)
@@ -440,6 +601,30 @@ alib_inline_run _nn([&]() {
 		.addFunction("get_error", &AudioWAV::GetError)
 		//.addProperty("volume", &AudioWAV::GetVolume, &AudioWAV::SetVolume)
 	.endClass();
+	alu_global.beginClass<lu_col>("Color")
+		.addConstructor<lu_col(*)(int, int, int, int)>()
+		.addConstructor<lu_col(*)(int, int, int)>()
+		.addData("r", &lu_col::r, true)
+		.addData("g", &lu_col::g, true)
+		.addData("b", &lu_col::b, true)
+		.addData("a", &lu_col::a, true)
+	.endClass();
+	alu_global.beginNamespace("Render")
+		.addFunction("SetDrawColor", std::function<void(lu_col)>([](lu_col _col) {
+			SDL_SetRenderDrawColor(__sdlRenderer, _col.r, _col.g, _col.b, _col.a);
+		}))
+		.addFunction("DrawLine", std::function<void(Vector2, Vector2)>([&](Vector2 start, Vector2 end) {
+			SDL_RenderDrawLine(__sdlRenderer, start.x, start.y, end.x, end.y);
+		}))
+		.addFunction("DrawRect", std::function<void(VectorRect)>([&](VectorRect r) {
+			SDL_Rect _r = r;
+			SDL_RenderDrawRect(__sdlRenderer, &_r);
+		}))
+		.addFunction("Clear", std::function<void()>([&]() {
+			SDL_RenderClear(__sdlRenderer);
+		}))
+		.addFunction("DrawText", &ImGui::TextForeground)
+	.endNamespace();
 	int status = luaL_dostring(state, R"(
 		printf = function(s,...)
 			return print(s:format(...))
@@ -447,6 +632,16 @@ alib_inline_run _nn([&]() {
 		io.stderr:setvbuf "no"
 		--collectgarbage("stop")
 		dofile("lib/debug.lua")
+		function foldr(f, ...)
+			if select('#', ...) < 2 then return ... end
+			local function helper(x, ...)
+				if select('#', ...) == 0 then
+				  return x
+				end
+				return f(x, helper(...))
+			end
+			return helper(...)
+		end
 	)");//
 	if (status) {
 		// since the error message includes the script which we're trying
@@ -461,12 +656,12 @@ alib_inline_run _nn([&]() {
 	}
 	
 });
-void guiRenderTaskImpl() {
-	
-
-
-
-
+void __lu_RenderTaskImpl() {
+	for (int i = 0; i < __renderTasks.size(); i++) {
+		printf("doing render task %d\n", i);
+		__renderTasks.at(i)();
+	}
+	__renderTasks.clear();
 }
 
 

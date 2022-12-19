@@ -30,6 +30,8 @@ typedef __int64 int64;
 #include "cwlib/cwlib.hpp"
 #include "e_keybindings.h"
 
+#include "global.h"
+
 
 #include <SDL2/SDL_opengl.h>
 #include <SDL2/SDL_opengl_glext.h>
@@ -40,6 +42,14 @@ struct Window {
 private:
 	SDL_Event sdlevent;
 public:
+	/*
+		0 : debug
+		1 : fullbright
+		2 : overlay
+		3 : ui
+		8 : is engine as editor
+	*/
+	unsigned long long data = B32(10010000, 00000000, 00000000, 00000000);
 	int argc;
 	char** argv;
 	static Window* WindowInstance;
@@ -57,12 +67,13 @@ public:
 	std::function< void() > OnFocusLost = [] {noop; };		// 
 	struct Component {
 		std::map<std::string, int> conds;
-		double data = B32(00000000,00000000,00000000,00000000);
+		long long data = B32(00000000,00000000,00000000,00000000);
 		std::function< void() > Start = [] {noop;};			// Code to run before first frame
 		std::function< void() > PreUpdate = [] {noop; };		// Code to run before every frame
 		std::function< void() > Update = [] {noop;};			// Code to run every frame
 		std::function< void() > PostUpdate = [] {noop;};		// Code to run before every frame
 		std::function< void() > PreRender = [] {noop;};		// Code to run just before rendering
+		std::function< void() > Render = [] {noop; };		// Code to run while rendering
 		std::function< void() > PostRender = [] {noop;};		// Code to run just after rendering
 		Component() {}
 		Component(std::function<void()> initFunc) {
@@ -92,7 +103,7 @@ public:
 
 		void EmulateKeyboardDown(unsigned char key, SDL_Event ev) {
 			keys[key] = true;
-			if (!key_frame[key]) {
+			if (key_frame[key] == -12) {
 				key_frame[key] = true;
 				onKeyPress(key);
 				return;
@@ -101,13 +112,13 @@ public:
 		}
 		void EmulateKeyboardUp(unsigned char key, SDL_Event ev) {
 			keys[key] = false;
-			key_frame[key] = false;
+			key_frame[key] = -12;
 			onKeyRelease(key);
 		}
 		bool GetKey(int k) { // Is Key pressed?
 			return keys[k];
 		}
-		bool GetKeyDown(int k) { // Key pressed this frame?
+		bool GetKeyPressed(int k) { // Key pressed this frame?
 			return key_frame[k];
 		}
 		void flush() {
@@ -115,10 +126,12 @@ public:
 		}
 	};
 	struct Mouse {
-		int x; int y;
-		bool m1d, m2d, m3d, mt1d, mt2d;
+		float sy, sd {0};
+		int x, y, dx, dy {0};
+		bool m1d, m2d, m3d, mt1d, mt2d{ false };
 		
 		std::function <void(int, int, bool, bool, bool, bool, bool)> onClick = [](int x, int y, bool l, bool r, bool m, bool t1, bool t2) {};
+		std::function <void(float)> onScroll = [](float y) {};
 		std::function <void(int, int)> onMove = [](int x, int y) {};
 	};
 	bool hasFocus;
@@ -144,13 +157,13 @@ public:
 	ImGuiIO io;
 	HWND hwnd;
 	HDC hdc;
+	
 	Vector2 size;
 	Vector2 pos = Vector2(100,100);
 	SDL_Window* SDL_WIND;
 	SDL_Renderer* SDL_REND;
 	SDL_GLContext SDL_GLCTX; 
-	SDL_Texture* CSL_TEX;
-	unsigned long long data = 0; // 8 byte wide data bit/byte storage for entire window. 
+	float border_size_x;
 	bool fullscreen = false;
 	Window(HWND console /* Text drawing base, unused. */, bool fullscreen /* Is game in fullscreen? */, const char* name, int width = 720, int height = 720) {
 		WindowInstance = this;
@@ -171,6 +184,11 @@ public:
 		want.channels = 8;
 		want.samples = 4096;
 
+		int imgFlags = IMG_INIT_PNG | IMG_INIT_JPG;
+		if (!(IMG_Init(imgFlags) & imgFlags))
+		{
+			printf("SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError());
+		}
 		dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_FORMAT_CHANGE);
 		if (dev == 0) {
 			std::cout << "Failed to open audio: " << SDL_GetError();
@@ -179,40 +197,39 @@ public:
 		{
 			printf("SDL could not initialize! SDL Error: %s\n", SDL_GetError());
 		}
-		std::cout << SDL_GetError();
-		int imgFlags = IMG_INIT_PNG | IMG_INIT_JPG;
-		if (!(IMG_Init(imgFlags) & imgFlags))
-		{
-			printf("SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError());
-		}
-		#if defined (DEBUG_COUT)
-			std::cout << "SDL_Image version : " << SDL_IMAGE_MAJOR_VERSION << "." << SDL_IMAGE_MINOR_VERSION << "." << SDL_IMAGE_PATCHLEVEL << std::endl;
-		#endif
-
 		SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 		SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
-		
-		uint32_t __winflags = SDL_RENDERER_PRESENTVSYNC | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
+		uint32_t __winflags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 		hdc = GetDC(hwnd);
 		SDL_WIND = SDL_CreateWindow(name, pos.x, pos.y, width, height, (__winflags));
 		hwnd = ::GetActiveWindow();
 		SDL_REND = SDL_CreateRenderer(SDL_WIND, -1, SDL_RENDERER_ACCELERATED);
+
 		SDL_SetRenderDrawBlendMode(SDL_REND, SDL_BLENDMODE_BLEND);
+		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SCALING, "1");
+
 		SDL_GLCTX = SDL_GL_CreateContext(SDL_WIND);
-		
 		initRenderer(SDL_REND, SDL_WIND);
 		size = Vector2(width, height);
 
 		ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO(); (void)io;
 		ImGui::StyleColorsDark();
+
+		CWLGlobals::DefaultFont = io.Fonts->AddFontDefault();
+
+		// pack as many chars as we can into the symbols font
+		auto _ranges = new ImWchar[2]{ 0x0020, 0xFFEF };
+		size_t symbol_font_sz = alib_file_length("data/symbols.ttf");
+		CWLGlobals::SymbolFontData = new char[symbol_font_sz + 1];
+		alib_file_read("data/symbols.ttf", CWLGlobals::SymbolFontData, symbol_font_sz);
+		CWLGlobals::SymbolFont = io.Fonts->AddFontFromMemoryTTF(CWLGlobals::SymbolFontData, symbol_font_sz, 13, nullptr, _ranges);
+		io.Fonts->Build();
+		
 		ImGui_ImplSDL2_InitForSDLRenderer(SDL_WIND);
 		ImGui_ImplSDLRenderer_Init(SDL_REND);
 		initRenderer__PHYS(SDL_REND);
 		keyboard.flush();
-		SDL_Texture* texture = SDL_CreateTexture(SDL_REND, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
-		//HideConsole();
-
 	};
 	Vector2 center = Vector2{size.x /2, size.y/2};
 	void StartInternal();
@@ -237,6 +254,22 @@ public:
 		}
 		void pushf(std::string fmt, ...) {
 			if (&debugWindowConsoleText == nullptr) { return; }
+			va_list args;
+			va_start(args, fmt);
+			debugWindowConsoleText.appendfv(fmt.c_str(), args);
+			va_end(args);
+			m_scrollToBottom = 10;
+
+		}
+		void pushlnuf(std::string cstr) {
+			cstr += "\n";
+			if (&debugWindowConsoleText == nullptr) { return; }
+			debugWindowConsoleText.append(cstr.c_str());
+			m_scrollToBottom = 10;
+		}
+		void pushlnf(std::string fmt, ...) {
+			if (&debugWindowConsoleText == nullptr) { return; }
+			fmt += "\n";
 			va_list args;
 			va_start(args, fmt);
 			debugWindowConsoleText.appendfv(fmt.c_str(), args);
@@ -272,8 +305,10 @@ public:
 			commands.at(cmd)(_cmd_args);
 		}
 	};
+	
 	Console cons{};
-	bool debug_window_open = false;
+	bool debug_window_open, debug_window_active = false;
+	
 
 	void DebugWindow() {
 		ImGui::Begin("Debug Console");
@@ -284,7 +319,7 @@ public:
 			cons.debugWindowConsoleText.clear();
 			cons.debugWindowConsoleText.append(__tmp.c_str());
 		}
-		ImGui::TextColouredFormatted(cons.debugWindowConsoleText.begin());
+		ImGui::TextMulticolored(cons.debugWindowConsoleText.begin());
 		if (cons.m_scrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
 			ImGui::SetScrollHereY(1.0f);
 			cons.m_scrollToBottom--;
@@ -308,7 +343,8 @@ public:
 			// resets input text
 			cons.debugWindowInput[0] = {0}; // generates a call to memset(debugWindowInput[0], '\0', 8)
 		}
-		debug_window_open = ImGui::IsWindowFocused();
+		debug_window_open = true;
+		debug_window_active = ImGui::IsWindowFocused() || ImGui::IsWindowHovered();
 		ImGui::Text("Application average %.2f ms/frame (%.1f FPS)", Time::DeltaTime, Time::fps);
 		ImGui::End();
 		
@@ -320,17 +356,71 @@ public:
 	};
 
 	void RenderInternal() {
+		int s = alib_min(this->size.x, this->size.y);
+		int start_posx = (0.5f * this->size.x) - (s * 0.5f);
+		this->border_size_x = start_posx;
+		Camera::GetInstance()->m_Offset.x = start_posx;
+		Camera::GetInstance()->m_GlobalViewport = this->size;
 		BatchRenderer().Render();
 		PostPreRender();
+		if (scene && getbitv(data, 2/*overlay*/) && scene->ui_img_elem_assets.contains("overlay")) {
+			Camera::GetInstance()->culling = true;
+			SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
+			const SDL_Rect lb = SDL_Rect(0, 0, start_posx, this->size.y);
+			const SDL_Rect rb = SDL_Rect(this->size.x - (this->scene->ui_img_elem_assets.at("overlay")->transform.scale.x * 0.5f), 0, this->size.x, this->size.y);
+			SDL_RenderFillRect(SDL_REND, &lb);
+			SDL_RenderFillRect(SDL_REND, &rb);
+		}
+		else {
+			Camera::GetInstance()->culling = false;
+		}
 		UI::GUIRenderer::Render();
+
+		for (unsigned int i = 0; i < components.size(); i++) {
+			/*(components[i] == NULL) ? noop :*/components[i]->Render();
+		}
+			RectCollider2d* currect;
+			RectCollider2d* noderect;
+			for (int i = 0; i < RectCollider2d::_mGlobalColArr.size(); i++) {
+				currect = RectCollider2d::_mGlobalColArr[i];
+				SDL_Rect r1 = RectCollider2d::recalc(*currect);
+				for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
+					alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
+					for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
+						MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
+						Vector2 s = line->start + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+						Vector2 e = line->end + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+						int x1 = s.x; int y1 = s.y;
+						int x2 = e.x; int y2 = e.y;
+						if (SDL_IntersectRectAndLine(&r1, &x1, &y1, &x2, &y2) && !getbitv(this->data, 8)) {
+							RectCollider2d::OnLineHit(currect, line);
+						}
+					}
+				}
+				for (int i1 = 0; i1 < RectCollider2d::_mGlobalColArr.size(); i1++) {
+					noderect = RectCollider2d::_mGlobalColArr[i1];
+					if (currect == noderect) {
+						continue;
+					}
+					std::string k = currect->id;
+					std::string v = noderect->id;
+					SDL_Rect r2 = RectCollider2d::recalc(*noderect);
+
+					if (SDL_HasIntersection(&r1, &r2) && !getbitv(this->data, 8)) {
+						RectCollider2d::OnColliderHit(currect, noderect);
+					}
+				}
+			}
 		ImGui::Render();
 		ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
+		
 		SDL_RenderPresent(SDL_REND);
 	}
 	void procEvent() {
 		while (SDL_PollEvent(&sdlevent))
 		{
 			ImGui_ImplSDL2_ProcessEvent(&sdlevent);
+			Camera* i = Camera::GetInstance();
 			switch (sdlevent.type)
 			{
 			default: break;
@@ -355,6 +445,10 @@ public:
 				}
 				mouse.onClick(mouse.x, mouse.y, mouse.m1d, mouse.m2d, mouse.m3d, mouse.mt1d, mouse.mt2d);
 			} break;
+			case SDL_MOUSEWHEEL: {
+				mouse.sy = sdlevent.wheel.y; 
+				mouse.onScroll(mouse.sd);
+			}
 			case SDL_MOUSEMOTION: {
 				SDL_GetMouseState(&mouse.x, &mouse.y);
 				mouse.onMove(mouse.x, mouse.y);
@@ -371,6 +465,8 @@ public:
 				break;
 			case SDL_WINDOWEVENT_MINIMIZED:
 				this->OnMinimize();
+				break;
+			case SDL_WINDOWEVENT_RESIZED:
 				break;
 			case SDL_WINDOWEVENT_MOVED: 
 				// Flush keyboard. This is so when moving, if a key is held, it won't teleport!
@@ -401,8 +497,11 @@ public:
 	}
 
 
-
+	int m_dx, m_dy{ 0 };
+	float m_ds = 0;
 	void IdleFuncInternal() {
+
+
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame(Window::WindowInstance->SDL_WIND);
 		ImGui::NewFrame();
@@ -415,6 +514,8 @@ public:
 		if (!started) {
 			started = true;
 			Start();
+			m_dx = mouse.x;
+			m_dy = mouse.y;
 			for (unsigned int i = 0; i < components.size(); i++) {
 				/*(components[i] == NULL) ? noop :*/components[i]->Start();
 			}
@@ -444,6 +545,14 @@ public:
 		RenderInternal();
 		Camera::GetInstance()->Update();
 		PostRenderInternal();
+
+		mouse.dx = m_dx - mouse.x;
+		mouse.dy = m_dy - mouse.y;
+		mouse.sd = m_ds - mouse.sy;
+
+		m_dx = mouse.x;
+		m_dy = mouse.y;
+		m_ds = mouse.sy;
 		Time::DeltaTimeUnscaled = (double)ImGui::GetIO().DeltaTime * 1000;
 		Time::DeltaTime = Time::DeltaTimeUnscaled * Time::DeltaTimeScale;
 		Time::fps = ImGui::GetIO().Framerate;
@@ -463,55 +572,53 @@ public:
 	};
 };
 
-void recalc_rect_positions() {
-	for (int i = 0; i < RectCollider2d::_mGlobalColArr.size(); i++) {
-		RectCollider2d* m = RectCollider2d::_mGlobalColArr[i];
-		if (!SUCCEEDED(m)) { continue; }
-		if (m->layer & COL_PLAYER) {
-			continue;
-		}
-		m->rect_cs->x = m->rect->x + -Camera::GetInstance()->m_target->x;
-		m->rect_cs->y = m->rect->y + -Camera::GetInstance()->m_target->y;
+#pragma region WindowDefs
+void Window::StartInternal() {
+	Start();
+	alib_remove_any_of<Component*>(components, nullptr);
+	for (unsigned int i = 0; i < components.size(); i++) {
+		/*(components[i] == NULL) ? noop :*/components[i]->Start();
 	}
 }
-#pragma region WindowDefs
+
 void Window::PreUpdateInternal() {
+	SDL_RenderClear(SDL_REND);
 
 	PreUpdate();
+	alib_remove_any_of<Component*>(components, nullptr);
 	for (unsigned int i = 0; i < components.size(); i++) {
-		recalc_rect_positions();
-		/*(components[i] == NULL) ? noop :*/components[i]->PreUpdate();
+		/*(components[i] == NULL) ? noop : */components[i]->PreUpdate();
 	}
 }
 void Window::UpdateInternal() {
 	Update();
+	alib_remove_any_of<Component*>(components, nullptr);
 	for (unsigned int i = 0; i < components.size(); i++) {
-		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->Update();
 	}
+	UI::GUIRenderer::RenderAnyUpdate();
 }
 void Window::PostUpdateInternal() {
 	PostUpdate();
+	alib_remove_any_of<Component*>(components, nullptr);
 	for (unsigned int i = 0; i < components.size(); i++) {
-		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PostUpdate();
 	}
 }
 void Window::PreRenderInternal() {
 	PreRender();
+	alib_remove_any_of<Component*>(components, nullptr);
 	for (unsigned int i = 0; i < components.size(); i++) {
-		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PreRender();
 	}
 }
 void Window::PostRenderInternal() {
 	PostRender();
+	alib_remove_any_of<Component*>(components, nullptr);
 	for (unsigned int i = 0; i < components.size(); i++) {
-		recalc_rect_positions();
 		/*(components[i] == NULL) ? noop :*/components[i]->PostRender();
 	}
 }
-#include "cwlib/cwlib.hpp"
 #pragma endregion
 #define Keyboard Window::WindowInstance->keyboard
 #define Mouse Window::WindowInstance->mouse

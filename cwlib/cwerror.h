@@ -31,7 +31,7 @@ struct cwError {
 	}
 	static inline cwWarnings warningState{};
 	static inline const char* errorStr{};
-	static inline bool debug_enabled = false;
+	static inline bool debug_enabled = true;
 	cwError() {
 		alib_set_byte(const_cast<char*>(errorStr), '\0');
 	}

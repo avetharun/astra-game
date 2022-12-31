@@ -47,6 +47,9 @@ public:
 			status = (chunkw == nullptr) ? Mix_GetError() : WAV_SUCCESS;
 		}
 	}
+	int pan_right, pan_left = pan_right = 255;
+	int distance = 0;
+	int volume = 100;
 	AudioWAV() {
 		status = WAV_UNINIT;
 		chunk = nullptr;
@@ -76,21 +79,24 @@ public:
 		}
 		else {
 			if (chunkw != nullptr) {
-				if (Mix_Playing(selectedChannel) || selectedChannel == -2 ) {
-					selectedChannel = Mix_PlayChannel(-1, chunkw, (loop)?-1:0);
-					Mix_HaltChannel(selectedChannel);
-				}
-				Mix_PlayChannel(selectedChannel, chunkw, (loop) ? -1 : 0);
+				char lft = alib_clamp(pan_left, 0, 255);
+				char rgt = alib_clamp(pan_right, 0, 255);
+				char _dst = alib_clamp(distance, 0, 255);
+				selectedChannel = Mix_PlayChannel(selectedChannel, chunkw, (loop) ? -1 : 0);
+				Mix_SetDistance(selectedChannel, _dst);
+				Mix_SetPanning(selectedChannel, lft, rgt);
+				Mix_Volume(selectedChannel, volume);
 			}
 			else { std::cout << "Error playing sound, Audio is null!"; }
 		}
 	}
-
 	bool isPlaying() {
 		int channel = selectedChannel;
-		return (music)?Mix_PlayingMusic():Mix_Playing (channel); 
+		return (music) ? Mix_PlayingMusic() : Mix_Playing(channel);
 	}
+
 	
+
 	void SetVolume(int v) {
 		/*VOLUME: 0-128*/
 		Mix_Volume(selectedChannel, v);

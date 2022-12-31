@@ -11,16 +11,16 @@ struct CWEditor {
 	static inline MeshCollider2d* mesh = nullptr;
 	enum {
 		TRANSFORM_MOVE, TRANSFORM_SCALE, TRANSFORM_ROTATE,
-		INSPECTOR_MESH, INSPECTOR_SPRITES, INSPECTOR_ALL
+		INSPECTOR_MESH, INSPECTOR_SPRITES, INSPECTOR_ASSETS
 	};
 };
 int col_types[] = { COL_EMPTY, COL_ENT, COL_TRG, COL_OBJ, COL_SOLID, COL_CENTER };
 
 int transform_type = CWEditor::TRANSFORM_MOVE;
-int inspector_type = CWEditor::INSPECTOR_ALL;
+int inspector_type = CWEditor::INSPECTOR_ASSETS;
 int grid_size;
 bool _col_show_rects, _col_show_lines{ 0 };
-
+std::string new_sprite_filename;
 bool needs_loading = true;
 std::string title;
 void editor_update() {
@@ -46,8 +46,8 @@ void editor_update() {
 	}
 	ImGui::SameLine();
 
-	if (ImGui::SmallButton("Assets") || inspector_type == CWEditor::INSPECTOR_ALL) {
-		inspector_type = CWEditor::INSPECTOR_ALL;
+	if (ImGui::SmallButton("Assets") || inspector_type == CWEditor::INSPECTOR_ASSETS) {
+		inspector_type = CWEditor::INSPECTOR_ASSETS;
 		ImGui::UnderlineLast();
 	}
 	ImGui::SameLine();
@@ -55,33 +55,59 @@ void editor_update() {
 	if (ImGui::SmallButton("S")) {
 		Window::WindowInstance->scene->Save();
 	}
+	
 	ImGui::PopFont();
 	ImGui::PopStyleVar(1);
 	ImGui::BeginChild("INSPECTOR_CHILD", { 0, 0}, true);
 	{
+		if (inspector_type == CWEditor::INSPECTOR_ASSETS) {
+			auto& s_particles = ParticleEffect::m_particle_arr;
+			ImGui::NewLine();
+			for (int i = 0; i < s_particles.size(); i++) {
+				auto& particle = s_particles.at(i);
+				if (ImGui::CollapsingHeader(alib_strfmt("%s###m_edit_particle_header%d", particle->name.c_str(), i))) {
+					ImGui::InputText(alib_strfmt("###edit_name_particle%d", i), &particle->name);
+					ImGui::SliderAngle(alib_strfmt("dir###m_edit_particle_direction%d",i), &particle->m_dir_angle_rad, 0);
+					ImGui::SliderFloat(alib_strfmt("vel###m_edit_particle_velocity%d", i), &particle->m_velocity, 0, 10);
+					ImGui::InputDouble2(alib_strfmt("pos###m_edit_particle_start_pos%d", i), (double*)&particle->start_pos.x);
+					ImGui::InputFloat(alib_strfmt("lifetime###m_edit_particle_lifetime%d", i), & particle->m_lifetime);
+				}
+			}
+		}
 		if (inspector_type == CWEditor::INSPECTOR_SPRITES) {
-			std::map<std::string, Sprite*> sprites = Window::WindowInstance->scene->sprite_assets;
+			auto& sprites = Window::WindowInstance->scene->sprite_assets;
 			int _spriteoffset = 0;
-			for (std::pair<const std::string, Sprite*> sprite : sprites) {
+			ImGui::InputText("filename", &new_sprite_filename);
+			ImGui::SameLine();
+			if (ImGui::Button("s+##addsprite") && alib_file_exists(new_sprite_filename.c_str())) {
+				Sprite* s = (new Sprite(new_sprite_filename.c_str()))->withID(new_sprite_filename);
+				Window::WindowInstance->scene->sprite_assets.push_back({new_sprite_filename, s});
+				s->insert();
+			};
+			for (int i = 0; i < sprites.size(); i++) {
+				std::pair<std::string, Sprite*>& sprite = sprites.at(i);
 				_spriteoffset++;
-				if (ImGui::CollapsingHeader(alib_strfmt("%s###%d", sprite.first.c_str(), _spriteoffset))) {
-					if (ImGui::SmallButton(alib_strfmt("++###a_s%d", _spriteoffset))) {
-						std::string id = alib_strfmt("%s_%d", sprite.first.c_str(), _spriteoffset);
-						Sprite* s = sprite.second->copy()->withID(id);
-						s->insert();
-						Window::WindowInstance->scene->sprite_assets.insert({ id, s });
-					} ImGui::SameLine();
+				if (!sprite.second) {
+					continue;
+				}
+				if (ImGui::CollapsingHeader(alib_strfmt("%s###edit_sprite_header%d", sprite.first.c_str(), _spriteoffset))) {
 					if (ImGui::SmallButton(alib_strfmt("--###r_s%d", _spriteoffset))) {
 						if (Sprite::eraseElementByID(sprite.first)) {
-							Window::WindowInstance->scene->sprite_assets.erase(sprite.first);
+							sprites.erase(sprites.begin() + alib_FindOffsetOfPairInVector(sprites, sprite.first));
 						}
+					} ImGui::SameLine();
+					if (ImGui::SmallButton(alib_strfmt("++###d_s%d", _spriteoffset))) {
+						sprites.push_back(std::make_pair(sprite.first + " copy", sprite.second->copy()->withID(sprite.first + " copy")));
+						continue;
 					}
-					if (ImGui::InputText(alib_strfmt("id###edit_sprite_id%d", _spriteoffset), sprite.second->identifier, 40)) {
-						sprite.second->setID(sprite.second->identifier);
-						auto node = Window::WindowInstance->scene->sprite_assets.extract(sprite.first);
-						node.key() = sprite.second->getID();
-						Window::WindowInstance->scene->sprite_assets.insert(std::move(node));
+					if (ImGui::InputText(alib_strfmt("id###edit_sprite_id%d", _spriteoffset), &sprite.first)) {
+						sprite.second->identifier = sprite.first;
 					};
+					ImGui::InputInt4(alib_strfmt("UV###edit_sprite_uv%d", _spriteoffset), &sprite.second->uv.x);
+					ImGui::InputDouble2(alib_strfmt("Pos###edit_sprite_pos%d", _spriteoffset), &sprite.second->transform.position.x);
+					ImGui::InputDouble2(alib_strfmt("Size###edit_sprite_size%d", _spriteoffset), &sprite.second->transform.scale.x);
+					ImGui::InputInt(alib_strfmt("MFrames###edit_sprite_frames%d", _spriteoffset), &sprite.second->meta.frames);
+					ImGui::InputFloat(alib_strfmt("MDelay###edit_sprite_delay%d", _spriteoffset), &sprite.second->meta.delay);
 				}
 			}
 		}

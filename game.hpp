@@ -5,7 +5,7 @@
 #define COUT_DEBUG
 #define CWL_DEBUG
 #include "engine.hpp"
-#include "e_keybindings.h"
+#include "input.h"
 #define Win_width 720
 #define Win_height 720
 Window* Window::WindowInstance = new Window(::GetConsoleWindow(), false, "\0", Win_width, Win_height);;
@@ -53,6 +53,7 @@ Window::Initializer __init_window_f{
 
 
 		Win->cons.commands.insert({ "cw_edit", [&](const char* _args) {
+			if (!Window::WindowInstance->scene) { return; }
 			std::vector<std::string> _argsv;
 			alib_split_quoted(_args, &_argsv);
 				if (_argsv.size() >= 1) {
@@ -72,8 +73,7 @@ Window::Initializer __init_window_f{
 					}
 				}
 			}
-			});
-
+		});
 		Win->cons.commands.insert({ "cw_save", [&](const char* _args) {
 			if (Win->scene) {
 				Window::WindowInstance->scene->Save();
@@ -133,6 +133,10 @@ Window::Initializer __init_window_f{
 		Win->cons.commands.insert({ "cl_pos", [&](const char* _args) {
 			Win->cons.pushlnf("Player position: %.2f, %.2f", Camera::GetInstance()->m_target->x, Camera::GetInstance()->m_target->y);
 		} });
+		Win->cons.commands.insert({ "cl_noclip", [&](const char* _args) {
+			auto window = lu_cw_get_window();
+			window->noclip = !window->noclip;
+		} });
 		Win->cons.commands.insert({ "r_fullbright", [&](const char* _args) {
 			std::vector<std::string> _argsv;
 			alib_split_quoted(_args, &_argsv);
@@ -167,15 +171,20 @@ Window::Initializer __init_window_f{
 				// ostringstream to hold the error message
 				std::ostringstream errmsg;
 				int parseError1_pos = lua_gettop(state);
-				errmsg << "Errors parsing the following script:" << std::endl;
-				errmsg << arg << std::endl << std::endl;
 				errmsg << "Parser error when interpreting as an expression:" << std::endl;
 				errmsg << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
-				Win->cons.pushuf(errmsg.str().c_str());
+				cwError::pstate(cwError::CW_ERROR);
+				cwError::serrof("Error executing: \n%s", errmsg.str().c_str());
+				cwError::postate();
 			}
 		} });
 		Win->cons.commands.insert({ "execf", [&](const char* arg) {
-			if (!alib_file_exists(arg)) { cwError::sstate(cwError::CW_ERROR); cwError::serrof("File %s doesn't exist.", arg); return; }
+			if (!alib_file_exists(arg)) { 
+				cwError::pstate(cwError::CW_ERROR);
+				cwError::serrof("File %s doesn't exist.", arg); 
+				cwError::postate();
+				return; 
+			}
 			int status = luaL_dofile(state, arg);
 			if (status) {
 				std::ostringstream errmsg;
@@ -184,7 +193,9 @@ Window::Initializer __init_window_f{
 				errmsg << arg << std::endl << std::endl;
 				errmsg << "Parser error when interpreting as an expression:" << std::endl;
 				errmsg << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
-				Win->cons.pushuf(errmsg.str().c_str());
+				cwError::pstate(cwError::CW_ERROR);
+				cwError::serrof("Error executing: \n%s", errmsg.str().c_str());
+				cwError::postate();
 			}
 		} });
 	}
@@ -194,8 +205,6 @@ Window::Initializer __init_window_f{
 
 
 #pragma region WindowScriptable
-
-
 
 Window::Initializer _nn{
 	[]() /*  Window functions  */ {
@@ -267,43 +276,47 @@ Window::Initializer _nn{
 			}
 		};
 		Win->PostPreRender = [&]() {
-			fps_tx.textfmt("%s%.2f", col.c_str(), Window::WindowInstance->time.fps);
+			if (__phys_is_debug || getbitv(Window::WindowInstance->data, 8)) {
+				fps_tx.enabled = true;
+				fps_tx.text = alib_strfmt("%.2f fps", Window::WindowInstance->time.fps);
+				for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
+					RectCollider2d* c = RectCollider2d::_mGlobalColArr[o];
+					SDL_Rect r = RectCollider2d::recalc(*c);
+					SDL_SetRenderDrawColor(Win->SDL_REND, 128, 128, 128, 128);
+					SDL_RenderFillRect(Win->SDL_REND, &r);
+					ImGui::TextBackground(alib_strfmt("rect %d", o), { (float)r.x + (r.w * 0.5f), (float)r.y + (r.h * 0.5f) });
+				}
+				for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
+					alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
+					for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
+						MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
+						Vector2 s = line->start + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+						Vector2 e = line->end + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+						SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 128);
+						SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
+						// Only render line bounds if we're not in the editor- It's for debugging purposes!
+						SDL_Rect c_lr = MeshLine::bounding_box({ s,e });
+						SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 128, 128, 128);
+						SDL_RenderDrawRect(Win->SDL_REND, &c_lr);
+						Vector2 mid = MeshLine::midpoint(s, e);
+						ImGui::TextBackground(alib_strfmt("line %d", l), { (float)mid.x, (float)mid.y });
+					}
+				}
+			}
+			else {
+				fps_tx.enabled = false;
+			}
 			if (!getbitv(Win->data, 0)) {
 				ImGui::SetWindowFocus(NULL);
 				Win->debug_window_open = false;
 				lu_SDL_Window_impl::__INSTANCE->debug_window_open = false;
 				lu_SDL_Window_impl::__INSTANCE->debug_window_active = false;
+				Input::Keyboard::input_stolen = false;
 			}
 			fps_tx.enabled = Win->debug;
 
 			if (Win->debug) {
 				setbitv(Win->data, 0, 1);
-				if (__phys_is_debug || getbitv(Window::WindowInstance->data,8)) {
-
-					for (unsigned int o = 0; o < RectCollider2d::_mGlobalColArr.size(); o++) {
-						RectCollider2d* c = RectCollider2d::_mGlobalColArr[o];
-						SDL_Rect r = RectCollider2d::recalc(*c);
-						SDL_SetRenderDrawColor(Win->SDL_REND, 128, 128, 128, 128);
-						SDL_RenderFillRect(Win->SDL_REND, &r);
-						ImGui::TextBackground(alib_strfmt("rect %d", o), { (float)r.x + (r.w * 0.5f), (float)r.y + (r.h * 0.5f) });
-					}
-					for (size_t m = 0; m < MeshCollider2d::_mGlobalColArr.size(); m++) {
-						alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
-						for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
-							MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
-							Vector2 s = line->start + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
-							Vector2 e = line->end + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
-							SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 128);
-							SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
-							// Only render line bounds if we're not in the editor- It's for debugging purposes!
-							SDL_Rect c_lr = MeshLine::bounding_box({ s,e });
-							SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 128, 128, 128);
-							SDL_RenderDrawRect(Win->SDL_REND, &c_lr);
-							Vector2 mid = MeshLine::midpoint(s,e);
-							ImGui::TextBackground(alib_strfmt("line %d", l), {(float)mid.x, (float)mid.y});
-						}
-					}
-				}
 			}
 			else {
 				setbitv(Win->data, 0, 0);

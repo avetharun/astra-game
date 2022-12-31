@@ -8,6 +8,7 @@
 
 #include <string>
 #include <vector>
+#include <stack>
 #include <array>
 #include "cwerror.h"
 #ifndef PI

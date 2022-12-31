@@ -63,7 +63,6 @@ struct Vector2 {
 	Vector sx(int v = INT32_MAX) { this->x = v; return this->x; }
 	Vector sy(int v = INT32_MAX) { this->y = v; return this->y; }
 	Vector2* lu_get() { return this; }
-
 	Vector x = 0; 
 	Vector y = 0;
 	Vector2() {}
@@ -135,6 +134,17 @@ struct Vector2 {
 	bool operator < (Vector other) {
 		return (x < other && y < other) ? true : false;
 	}
+	static Vector2 parse_angle(float angle) {
+		Vector2 i(
+			(1* cos(alib_deg2rad(angle))),
+			(1* sin(alib_deg2rad(angle)))
+		);
+		printf("%f, %f", i.x, i.y);
+		return i;
+	}
+	static float parse_angle_vec(Vector2 v) {
+		return atan2f(v.y, v.x) * 180 / M_PI;
+	}
 	Vector luaL_getx() { return x; }
 	Vector luaL_gety() { return y; }
 	Vector2 luaL__add(Vector2 rhs) { return *this + rhs; }
@@ -148,6 +158,8 @@ struct Vector2 {
 
 	static Vector2 up;
 	static Vector2 right;
+	static Vector2 down;
+	static Vector2 left;
 	friend std::ostream& operator<<(std::ostream& os, const Vector2& o)
 	{
 		os << o.x << ", " << o.y;
@@ -183,7 +195,7 @@ struct Vector2 {
 			return 0.0f;
 
 		double dot__ = alib_clamp(dot(lhs, rhs) / denominator, -1.0, 1.0);
-		return acos(dot__) * alib_rad2deg;
+		return alib_rad2deg(acos(dot__));
 	}
 	Vector2 clamp_magnitude(double maxLength) {
 		double sqrmag = sqrt(this->magnitude());
@@ -209,8 +221,10 @@ struct Vector2 {
 	static Vector2 lu_abs(Vector2 v) { return {abs(v.x), abs(v.y)}; }
 };
 
-Vector2 Vector2::up = Vector2{ 0,1 };
+Vector2 Vector2::up = Vector2{ 0,-1 };
 Vector2 Vector2::right = Vector2{ 1,0 };
+Vector2 Vector2::down = Vector2{ 0,1 };
+Vector2 Vector2::left = Vector2{ -1,0 };
 struct VectorRect {
 	Vector x = 0;
 	Vector y = 0;

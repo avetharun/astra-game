@@ -8,6 +8,9 @@
 #include "imgui/imgui_markdown.h"
 #include "imgui/imgui_uielement.h"
 
+#include "global.h"
+#include <stack>
+
 namespace UI {
 	size_t ui_elem_offset;
 	std::string _fmt_name() {
@@ -35,14 +38,18 @@ namespace UI {
 		Vector2 pos;
 		float size = 1;
 		std::string text;
+		
 		void textfmt(const char* fmt, ...) {
-			char* x;
-			va_list ap;
-			va_start(ap, fmt);
-			int size = vasprintf(&x, fmt, ap);
-			va_end(ap);
-			this->text = x;
+			va_list args;
+			va_start(args, fmt);
+			size_t bufsz = 0;
+			bufsz = vsnprintf(NULL, 0, fmt, args);
+			char* _buf = new char[bufsz];
+			vsnprintf(_buf, bufsz, fmt, args);
+			va_end(args);
+			text = std::string(_buf);
 		}
+
 		void Render();
 		TextElement(std::string);
 		TextElement();
@@ -82,7 +89,6 @@ namespace UI {
 		
 		void operator ~() { 
 			SDL_DestroyTexture(texture);
-			SDL_FreeSurface(surf);
 		}
 		ImageElement(const char* filename) {
 			this->fname = filename;
@@ -110,6 +116,209 @@ namespace UI {
 				return;
 			}
 			//printf("Rendering ui image with size (%d, %d) at (%d, %d) with uv (%d, %d, %d, %d)\n", transform.scale.x, transform.scale.y, transform.position.x, transform.position.y, uv.x, uv.y, uv.w, uv.h);
+		}
+	};
+
+	struct GameTextBox {
+		luabridge::LuaRef on_complete = nullptr;
+		std::string text;
+		std::string title;
+		float delta = 0;
+		bool is_active;
+		bool is_first_frame = true;
+		bool is_wanting_dtor = false;
+		static inline std::stack<GameTextBox*> _mBoxes;
+		static inline float seconds_for_btn_flash = 0.5f;
+		static inline float padding_bottom = 128;
+		static inline float padding_sides = 128;
+		static inline int TextBoxOffset = 0;
+		static inline bool isInteracting;
+		GameTextBox(std::string label_id, std::string m_text, luabridge::LuaRef on_complete_func) {
+			this->text = m_text;
+			this->on_complete = on_complete_func;
+			this->title = label_id + alib_strfmt("###%d", TextBoxOffset);
+			_mBoxes.push(this);
+			TextBoxOffset++;
+		}
+		void Render() {
+			ImGuiIO& io = ImGui::GetIO();
+			if (io.DisplaySize.x > io.DisplaySize.y) {
+				padding_sides = io.DisplaySize.x * 0.21f;
+			}
+			else {
+				padding_sides = io.DisplaySize.x * 0.04f;
+			}
+			float ysz = ImGui::CalcTextSize(text.c_str()).y + ImGui::CalcTextSize("#").y;
+			ImGui::SetNextWindowSize({io.DisplaySize.x - (padding_sides*2), padding_bottom * 0.9f});
+			ImGui::SetNextWindowPos({ padding_sides, io.DisplaySize.y - padding_bottom});
+			ImGui::Begin(alib_strfmt("%sGameTextBox", title.c_str(), title.c_str()), 0, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+			this->isInteracting = true;
+			this->is_active = ImGui::IsWindowFocused();
+			const char* line = text.c_str();
+			const char* text_end = text.c_str() + text.length();
+
+			if (line < text_end)
+			{
+				while (line < text_end)
+				{
+					const char* line_end = (const char*)memchr(line, '\n', text_end - line);
+					if (!line_end)
+						line_end = text_end;
+					ImGui::Text(std::string(line, (int)(line_end - line)).c_str());
+					line = line_end + 1;
+				}
+			}
+			if (delta > seconds_for_btn_flash) {
+				ImGui::SameLine();
+				ImGui::PushFont(CWLGlobals::SymbolFont);
+				ImGui::Text("_");
+				ImGui::PopFont();
+				if (delta > seconds_for_btn_flash * 2) {
+					delta = 0;
+				}
+			}
+			ImGui::End();
+			delta += io.DeltaTime;
+			if (!is_first_frame && (
+				Input::Keyboard::GetKeyPressed(Input::K_return) || 
+				Input::Keyboard::GetKeyPressed(Input::K_space) || 
+				Input::Keyboard::GetKeyPressed(Input::K_e) ||
+				Input::Mouse::m1df
+				)) {
+				if (!on_complete.isNil()) {
+					on_complete();
+				}
+				is_wanting_dtor = true;
+				Input::Keyboard::key_frame[Input::K_return] = false;
+				Input::Keyboard::key_frame[Input::K_space] = false;
+				isInteracting = false;
+				
+			}
+
+			is_first_frame = false;
+		}
+	};
+	struct Alignment{
+		static inline const int LEFT = 1;
+		static inline const int RIGHT = 2;
+		static inline const int CENTER = 3;
+		static inline const int TOP = 4;
+		static inline const int BOTTOM = 5;
+	};
+	struct GameOptionsBox {
+		luabridge::LuaRef on_complete = nullptr;
+		bool is_wanting_dtor = false;
+		std::string title;
+		int alignment;
+		std::vector<std::string> keys;
+		ABTDataStub options;
+		int selected_key;
+		static inline std::stack<GameOptionsBox*> _mOptionsBoxes;
+		bool is_first_frame = true;
+		volatile bool wait_a_frame = false;
+		void Render() {
+			// wait for destructor
+			if (is_wanting_dtor) { return; }
+			if (options.is_array()) { 
+				this->is_wanting_dtor = true;
+				cwError::push(cwError::CW_ERROR);
+				cwError::serrof("Error rendering GameOptionsBox: Options was an array! It needs to be a map! Are you initializing this properly?");
+				cwError::pop();
+				return; 
+			}
+			UI::GameTextBox::isInteracting = true;
+			ImGuiIO& io = ImGui::GetIO();
+			if (io.DisplaySize.x > io.DisplaySize.y) {
+				GameTextBox::padding_sides = io.DisplaySize.x * 0.21f;
+			}
+			else {
+				GameTextBox::padding_sides = io.DisplaySize.x * 0.04f;
+			}
+			ImGui::SetNextWindowSize({ io.DisplaySize.x - (GameTextBox::padding_sides * 1.25f), GameTextBox::padding_bottom * 0.9f });
+			ImVec2 pos;
+			float padding_bottom = (GameTextBox::padding_bottom * 2);
+			switch (alignment) {
+			default:
+			case Alignment::BOTTOM: 
+			case Alignment::CENTER: pos = { GameTextBox::padding_sides, io.DisplaySize.y - GameTextBox::padding_bottom }; break;
+			case Alignment::LEFT : pos = { GameTextBox::padding_sides * 0.5f, io.DisplaySize.y - padding_bottom }; break;
+			case Alignment::RIGHT: pos = { io.DisplaySize.x - GameTextBox::padding_sides * 2.25f, io.DisplaySize.y - padding_bottom * 0.5f }; break;
+			case Alignment::TOP:pos = { GameTextBox::padding_sides, GameTextBox::padding_bottom }; break;
+			}
+			ImGui::SetNextWindowPos(pos);
+			ImGui::Begin(title.c_str(), 0, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+			for (int i = 0; i < keys.size(); i++) {
+				std::string _cur_key = keys.at(i);
+				if (i == 0 && is_first_frame) {
+					selected_key = i;
+				}
+				json key = this->options.at(_cur_key);
+				if (key.is_boolean()) {
+					bool _m_selected = true;
+					if (selected_key != i) {
+						_m_selected = false;
+						ImGui::BeginDisabled();
+					}
+					ImGui::Text(_cur_key.c_str());
+					if (!_m_selected) {
+						ImGui::EndDisabled();
+					}
+					if (!is_first_frame) {
+						if (!wait_a_frame) {
+							if (
+								Input::Keyboard::GetKeyPressed(Input::K_return) ||
+								Input::Keyboard::GetKeyPressed(Input::K_space) ||
+								Input::Keyboard::GetKeyPressed(Input::K_e) ||
+								Input::Mouse::m1df
+
+								) {
+								is_wanting_dtor = true;
+								UI::GameTextBox::isInteracting = false;
+								options.set_bool(keys.at(selected_key), true);
+								if (!on_complete.isNil()) {
+									on_complete(options);
+								}
+							}
+							// we need to wait a frame if some action is done, otherwise it'll think the key is pressed when iterating. This will not affect anything visually.
+							if (Input::Keyboard::GetKeyPressed(Input::K_down) || Input::Keyboard::GetKeyPressed(Input::K_S)) {
+								alib_clampptr(&(selected_key += 1), 0, (int)keys.size() - 1);
+								wait_a_frame = true;
+								continue;
+							}
+							else if (Input::Keyboard::GetKeyPressed(Input::K_up) || Input::Keyboard::GetKeyPressed(Input::K_W)) {
+								alib_clampptr(&(selected_key -= 1), 0, (int)keys.size() - 1);
+								wait_a_frame = true;
+								continue;
+							}
+						}
+					}
+				} else if (is_first_frame) {
+					cwError::push(cwError::CW_ERROR);
+					cwError::serrof("Option %s needs to be of type Boolean!", _cur_key.c_str());
+					cwError::pop();
+				}
+				if (wait_a_frame) {
+					wait_a_frame = false;
+				}
+			}
+			ImGui::End();
+			is_first_frame = false;
+		}
+		GameOptionsBox(std::string m_title, ABTDataStub m_options, luabridge::LuaRef m_on_complete) {
+			_mOptionsBoxes.push(this);
+			this->options = m_options;
+			this->title = m_title;
+			this->alignment = Alignment::RIGHT;
+			this->keys = m_options.get_keys();
+			this->on_complete = m_on_complete;
+		}
+		GameOptionsBox(std::string m_title, ABTDataStub m_options, luabridge::LuaRef m_on_complete, int m_alignment) {
+			_mOptionsBoxes.push(this);
+			this->options = m_options;
+			this->title = m_title;
+			this->alignment = m_alignment;
+			this->keys = m_options.get_keys();
+			this->on_complete = m_on_complete;
 		}
 	};
 }

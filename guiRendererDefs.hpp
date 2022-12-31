@@ -7,32 +7,32 @@
 namespace UI {
 	void GUIRenderer::RenderAnyUpdate() {
 		_element_arr.shrink_to_fit();
-		for (ui_elem_offset = 0; ui_elem_offset < _element_arr.size(); ui_elem_offset++) {
-			std::any* tx_elem = _element_arr.at(ui_elem_offset);
-			if (!tx_elem) {
-				_element_arr.erase(_element_arr.begin() + ui_elem_offset);
-				// Will shrink vector next frame.
-				continue;
-			}
-			if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
-				TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
-				if (!_e->enabled || !_e->__render_on_update) { continue; }
-				_e->Render();
-				continue;
-			}
-			if (alib_costr(tx_elem->type().name(), "UI::ButtonElement *")) {
-				ButtonElement* _e = std::any_cast<ButtonElement*>(*tx_elem);
-				if (!_e->enabled || !_e->__render_on_update) { continue; }
-				_e->Render();
-				continue;
-			}
-			if (alib_costr(tx_elem->type().name(), "UI::ImageElement *")) {
-				ImageElement* _e = std::any_cast<ImageElement*>(*tx_elem);
-				if (!_e->enabled || !_e->__render_on_update) { continue; }
-				_e->Render();
-				continue;
-			}
-		}
+		//for (ui_elem_offset = 0; ui_elem_offset < _element_arr.size(); ui_elem_offset++) {
+		//	std::any* tx_elem = _element_arr.at(ui_elem_offset);
+		//	if (!tx_elem) {
+		//		_element_arr.erase(_element_arr.begin() + ui_elem_offset);
+		//		// Will shrink vector next frame.
+		//		continue;
+		//	}
+		//	if (alib_costr(tx_elem->type().name(), "UI::TextElement *")) {
+		//		TextElement* _e = std::any_cast<TextElement*>(*tx_elem);
+		//		if (!_e->enabled || !_e->__render_on_update) { continue; }
+		//		_e->Render();
+		//		continue;
+		//	}
+		//	if (alib_costr(tx_elem->type().name(), "UI::ButtonElement *")) {
+		//		ButtonElement* _e = std::any_cast<ButtonElement*>(*tx_elem);
+		//		if (!_e->enabled || !_e->__render_on_update) { continue; }
+		//		_e->Render();
+		//		continue;
+		//	}
+		//	if (alib_costr(tx_elem->type().name(), "UI::ImageElement *")) {
+		//		ImageElement* _e = std::any_cast<ImageElement*>(*tx_elem);
+		//		if (!_e->enabled || !_e->__render_on_update) { continue; }
+		//		_e->Render();
+		//		continue;
+		//	}
+		//}
 	}
 	void GUIRenderer::Render()
 	{
@@ -63,15 +63,31 @@ namespace UI {
 				continue;
 			}
 		}
+		if (GameTextBox::_mBoxes.size() >= 1) {
+			GameTextBox* box = GameTextBox::_mBoxes.top();
+			if (!box->is_wanting_dtor) {
+				box->Render();
+			}
+			else {
+ 				GameTextBox::_mBoxes.pop();
+				delete box;
+			}
+		}
+		if (GameOptionsBox::_mOptionsBoxes.size() >= 1) {
+			GameOptionsBox* box = GameOptionsBox::_mOptionsBoxes.top();
+			if (!box->is_wanting_dtor) {
+				box->Render();
+			}
+			else {
+				GameOptionsBox::_mOptionsBoxes.pop();
+				delete box;
+			}
+		}
 	}
 	void TextElement::Render() {
+		if (!enabled) { return; }
 		if (this->size <= 0) { this->size = 1.0f; }
-		ImGui::SetNextWindowPos({(float)this->pos.x-8, (float)this->pos.y-8});
-
-		ImGui::Begin(_fmt_name().c_str(), 0, GUIRenderer::__elementWinFlags);
-		ImGui::SetWindowFontScale(this->size);
-		ImGui::TextMulticolored(this->text.c_str());
-		ImGui::End();
+		ImGui::TextForeground(this->text, this->pos);
 	}
 	TextElement::TextElement() {
 		_element_arr.push_back(new std::any(this));
@@ -88,6 +104,7 @@ namespace UI {
 		this->buttonFlags = _flags;
 	}
 	void ButtonElement::Render() {
+		if (!enabled) { return; }
 		if (this->size == 0) { this->size = 1.0f; }
 		ImGui::SetNextWindowPos({ (float)this->pos.x - 8, (float)this->pos.y - 12});
 		ImGuiIO& __io = ImGui::GetIO();

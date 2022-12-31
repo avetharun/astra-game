@@ -250,6 +250,18 @@
             ],
             "",
             64
+          ],
+          [
+            [
+              387.0,
+              700.0
+            ],
+            [
+              492.0,
+              700.0
+            ],
+            "rei_bedroom_door_exit",
+            64
           ]
         ],
         "rects": [
@@ -268,12 +280,47 @@
             70,
             "bedstand",
             64
+          ],
+          [
+            656,
+            328,
+            48,
+            64,
+            "PLAYER_COLLIDER",
+            4
           ]
         ]
       },
       "id": "colliders",
       "schema": [
         "mesh"
+      ]
+    },
+    {
+      "asset_data": {
+        "filename": "sprites/sprites.png",
+        "transform": {
+          "h": 720.0,
+          "w": 720.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "uv": [
+          [
+            0.0,
+            91.0
+          ],
+          [
+            256.0,
+            256.0
+          ]
+        ]
+      },
+      "id": "overlay",
+      "schema": [
+        "ui",
+        "image",
+        "centered"
       ]
     }
   ],

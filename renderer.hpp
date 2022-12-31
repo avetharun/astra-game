@@ -29,6 +29,11 @@
 #include "imgui/imgui.h"
 
 
+enum IMAGE_LAYERS : int {
+	TOP = INT32_MAX,
+	BOTTOM = INT32_MIN
+};
+
 SDL_Renderer* SDL_REND_RHPP;
 SDL_Window* SDL_WIND_RHPP; 
 
@@ -81,7 +86,24 @@ SDL_Surface* loadImage(const char* path)
 {	
 	return IMG_Load(path);
 }
+struct SpriteAnimationMeta {
+	bool animate = true;
+	bool animate_once = false;
+	bool reset_after_once = true;
+	int CURRENT_FRAME = 0;
+	float DELTA = 0;
+	int frames = 0;
+	float delay = 0;
+	float alpha_start = 1;
+	float alpha_end = 1;
+	SpriteAnimationMeta() {}
+	SpriteAnimationMeta(int n_frames, float m_delay) {
+		this->frames = n_frames;
+		this->delay = m_delay;
+	}
+};
 struct Sprite{
+	SpriteAnimationMeta meta;
 	/**
 	*  \brief Should the batch renderer draw this?
 	*/
@@ -96,7 +118,7 @@ struct Sprite{
 	 */
 	char params;
 	std::string name;
-	char identifier[48]{ 0 };
+	std::string identifier;
 	/**
 	 *  \brief What layer is the sprite on? (basically Z offset)
 	 */
@@ -107,7 +129,7 @@ struct Sprite{
 	
 	Sprite() {
 		_mglobalspritearr.push_back(this); 
-		rect = (SDL_Rect*)malloc(sizeof(struct SDL_Rect));
+		rect = new SDL_Rect();
 		surf = SDL_CreateRGBSurface(0, 32, 32, 32, 0, 0, 0, 0);
 	};
 	SDL_Surface* surf{};
@@ -115,7 +137,7 @@ struct Sprite{
 	int channels = 4;
 	SDL_Rect uv{};
 	SDL_Rect __uv_last{};
-	
+	float alpha = 1;
 	/*
 	Theory:
 	Starting position of uv = uv.x, uv.y
@@ -129,6 +151,9 @@ struct Sprite{
 	void lockCamera() {
 		setbitv(params, 0, 1);
 	}
+	float alpha_delta;
+	float alpha_from = 1;
+	float alpha_to = 1;
 	Vector2 center_position{};
 	Vector2 _offset{};
 	Vector2 _cameraViewOffset{};
@@ -139,8 +164,36 @@ struct Sprite{
 		if (amt == 0) { return from; }
 		return from + ((base * (amt)) - base);
 	}
+	
 	Vector2 pixel_size;
 	void Update() {
+		if (meta.frames > 0 && (meta.animate || meta.animate_once) ) {
+			if (meta.animate_once) {
+				meta.animate = true;
+			}
+			if (meta.DELTA > meta.delay) {
+				if (meta.animate_once && meta.CURRENT_FRAME == meta.frames) {
+					meta.animate = false;
+					meta.animate_once = false;
+					if (!meta.reset_after_once) {
+						meta.CURRENT_FRAME = meta.frames;
+					}
+					else {
+						meta.CURRENT_FRAME = 1;
+					}
+				}
+				else {
+					meta.CURRENT_FRAME = meta.CURRENT_FRAME == meta.frames ? 1 : meta.CURRENT_FRAME + 1;
+				}
+				uv_tile.y = meta.CURRENT_FRAME;
+				meta.DELTA = 0;
+			}
+			ImGuiIO& io = ImGui::GetIO();
+			meta.DELTA += io.DeltaTime;
+		}
+		else if (meta.CURRENT_FRAME > 0) {
+			uv_tile.y = meta.CURRENT_FRAME;
+		}
 		uv_final.x = calc_uv_pair(uv.x, uv.w, uv_tile.x);
 		uv_final.y = calc_uv_pair(uv.y, uv.h, uv_tile.y);
 		uv_final.w = uv.w;
@@ -215,6 +268,8 @@ struct Sprite{
 		isRendering = true;
 		int SDL_FLIP_V = SDL_FLIP_NONE;
 		SDL_Point _origin = SDL_Point{ (int)transform.origin.x, (int)transform.origin.y };
+		SDL_SetTextureAlphaMod(Texture, (int)(alpha * 255));
+
 		if (&uv == nullptr || SDL_RectEmpty(&uv))
 		{
 			(SDL_RenderCopyEx(SDL_REND_RHPP, Texture, NULL, rect, transform.angle, &_origin, (SDL_RendererFlip)SDL_FLIP_V) < 0)
@@ -228,8 +283,7 @@ struct Sprite{
 
 	
 	void operator ~() {
-		auto& sv = Sprite::_mglobalspritearr;
-		sv.erase(std::remove(sv.begin(), sv.end(), this), sv.end());
+		Sprite::_mglobalspritearr.erase(std::remove(Sprite::_mglobalspritearr.begin(), Sprite::_mglobalspritearr.end(), this), Sprite::_mglobalspritearr.end());
 		if (Texture) {
 			SDL_DestroyTexture(Texture);
 		}
@@ -267,13 +321,13 @@ struct Sprite{
 		return;
 	}
 	void setID(std::string i) {
-		strncpy(this->identifier, i.c_str(), alib_min(i.length(), 40));
+		this->identifier = i;
 	}
-	std::string getID() { return std::string(this->identifier, 40); }
+	std::string getID() { return this->identifier; }
 	static bool eraseElementByID(std::string id) {
 		for (int i = 0; i < _mglobalspritearr.size(); i++) {
 			Sprite* _s = _mglobalspritearr[i];
-			if (alib_streqn(id, _s->identifier, 40)) {
+			if (alib_streq(id, _s->identifier.c_str())) {
 				_mglobalspritearr.erase(_mglobalspritearr.begin() + i);
 				_s->operator~();
 				return true;
@@ -284,9 +338,7 @@ struct Sprite{
 	static Sprite* getElementByID(std::string id) {
 		for (int i = 0; i < _mglobalspritearr.size(); i++) {
 			Sprite* _s = _mglobalspritearr[i];
-			std::cout << "Testing ID '" << id.c_str() << "' with id '" << _s->identifier << '\'' << '\n';
-			if (alib_streqn(id, _s->identifier, 40)) {
-				std::cout << "ID matches!";
+			if (alib_streq(id, _s->identifier.c_str())) {
 				return _s;
 			}
 		}
@@ -298,7 +350,12 @@ struct Sprite{
 	}
 	Sprite* copy() {
 		Sprite* s = new Sprite();
-		*s = *this;
+		s->transform = this->transform;
+		s->uv = this->uv;
+		s->enabled = true;
+		s->setID(this->getID() + " copy");
+		s->layer = this->layer;
+		s->name = this->name;
 		*s->rect = *this->rect;
 		s->surf = SDL_DuplicateSurface(this->surf);
 		s->Texture = SDL_CreateTextureFromSurface(SDL_REND_RHPP, surf);;
@@ -410,18 +467,162 @@ public:
 		this->UpdateFunc = _f;
 	}
 };
+struct ParticleEffects {
+	struct stub {
+		SDL_Rect uv;
+		std::string id;
+		float lifetime;
+		Vector2 size;
+		Vector2 randomness = {12, 12};
+		float velocity = 10;
+		float angle = 90; // down
+		int layer = 0;
+		SpriteAnimationMeta meta;
+	};
+	static inline stub FLAME = { .uv = {0,0, 1,1}, .id = "cw::flame", .lifetime = 2, .size = {4,4}, .angle = 270,
+		.meta = SpriteAnimationMeta(3, 0.2f)
+		};
+	static inline stub STONE_PARTICLE = {.uv = {1,0, 1,1}, .id = "cw::stone_particle", .lifetime=0.3, .size = {4,4},
+		.meta = SpriteAnimationMeta(3, 0.2f)
+		};
+	static inline stub RAIN = { .uv{2,0,1,1}, .id = "cw::rain", .lifetime = 10, .size = {4,4}, .randomness={100,0}, .angle = Vector2::parse_angle_vec(Vector2::down + (Vector2::left * 0.2f)),
+		.meta = SpriteAnimationMeta(3, 0.2f)
+		};
+	static inline stub BLOOD = { .uv{6,0,1,1}, .id = "cw::blood", .lifetime = 10, .size = {4,4}, .randomness = {100,0}, .velocity = 0, .angle = Vector2::parse_angle_vec(Vector2::down + (Vector2::left * 0.2f)),
+		.meta = SpriteAnimationMeta(3, 0.2f)
+		};
+	static inline stub SNOW = { .uv{3,0,3,3}, .id = "cw::snow", .lifetime = 10, .size = {18,18}, .randomness = {500,40}, .velocity = 4, .angle = Vector2::parse_angle_vec(Vector2::down + Vector2::left), .layer = IMAGE_LAYERS::TOP,
+		.meta = SpriteAnimationMeta(3, 0.2f)
+		};
+};
+struct ParticleEffect {
+	static inline Sprite* _m_ParticleImage = nullptr;
+	ParticleEffects::stub effect;
+	struct _stub {
+		float life = 0;
+		float life_randomness = 0.8f;
+		float velocity_randomness = 1;
+	};
+	std::vector<std::pair<Sprite*, _stub*>> particles;
+	int amt;
+	bool collides;
+	int m_layer;
+	float m_velocity;
+	float m_lifetime;
+	float m_dir_angle_rad = 0;
+	Vector2 m_randomness;
+	Vector2 start_pos;
+	SDL_Rect m_uv;
+	bool dtor;
+	Sprite* m_particle_sprite;
+	std::string name;
 
+	static ParticleEffect* getElementByID(std::string id) {
+		for (int i = 0; i < m_particle_arr.size(); i++) {
+			ParticleEffect* _s = m_particle_arr[i];
+			if (alib_streq(id, _s->name.c_str())) {
+				return _s;
+			}
+		}
+		return nullptr;
+	}
+	ParticleEffect(ParticleEffects::stub m_particle, float m_amt) {
+		if (!_m_ParticleImage) {
+			_m_ParticleImage = new Sprite("sprites/particles.png");
+			_m_ParticleImage->transform.scale = m_particle.size;
+			_m_ParticleImage->enabled = false;
+			_m_ParticleImage->meta = effect.meta;
+		}
+		this->effect = m_particle;
+		this->amt = m_amt;
+		m_particle_sprite = _m_ParticleImage->copy();
+		m_particle_sprite->enabled = false;
+		m_particle_sprite->layer = effect.layer;
+		this->m_velocity = effect.velocity;
+		this->m_layer = effect.layer;
+		this->m_lifetime = effect.lifetime;
+		this->m_randomness = effect.randomness;
+		this->m_uv = effect.uv;
+		this->m_dir_angle_rad = alib_deg2rad(effect.angle);
+		m_particle_sprite->uv = effect.uv;
+		name = effect.id;
+		for (int i = 0; i < amt; i++) {
+			Sprite* copy = m_particle_sprite->copy();
+			copy->enabled = true;
+			particles.push_back(std::make_pair(copy, new _stub{.life = m_lifetime}));
+		}
+
+		m_particle_arr.push_back(this);
+	}
+	void operator ~() {
+		pop(amt);
+		alib_remove_any_of(m_particle_arr, this);
+	}
+	void append(int count) {
+		amt += count;
+		for (int i = 0; i < count; i++) {
+			Sprite* copy = m_particle_sprite->copy();
+			copy->enabled = true;
+			particles.push_back(std::make_pair(copy, new _stub{ .life = m_lifetime }));
+		}
+	}
+	void pop(int count) {
+		amt -= count;
+		for (int i = 0; i < count; i++) {
+			auto& m_particle = particles.at(particles.size() - 1);
+			m_particle.first->operator~();
+			particles.erase(particles.end() - 1);
+		}
+	}
+	void Render() {
+		for (int i = 0; i < particles.size(); i++) {
+			std::pair<Sprite*, _stub*>& m_particle = particles.at(i);
+			m_particle.first->layer = m_layer;
+			m_particle.first->uv = m_uv;
+			m_particle.first->transform.scale = effect.size;
+		}
+		ImGuiIO io = ImGui::GetIO();
+		Vector2 m_direction = Vector2(
+				(1 * cos(m_dir_angle_rad)),
+				(1 * sin(m_dir_angle_rad))
+			);
+		// transform pass
+		for (int i = 0; i < particles.size(); i++) {
+			std::pair<Sprite*, _stub*>& m_particle = particles.at(i);
+			m_particle.second->life += io.DeltaTime;
+			m_particle.first->transform.position += (m_direction * m_velocity / m_particle.second->velocity_randomness);
+			float velocity_randomness = ((rand() % (int)(effect.velocity * 1000 + 1))) * 0.001f + 1;
+			if (m_particle.second->life > m_lifetime * m_particle.second->life_randomness) {
+				m_particle.second->velocity_randomness = velocity_randomness;
+				float random_x = ((rand() % ((int)m_randomness.x == 0 ? 1 : (int)m_randomness.x * 200)) * 0.01f);
+				float random_y = ((rand() % ((int)m_randomness.y == 0 ? 1 : (int)m_randomness.y * 200)) * 0.01f);
+				m_particle.first->transform.position = start_pos + Vector2(random_x, random_y) ;
+				m_particle.second->life = 0;
+				float lr = (rand() % 100) * 0.002f;
+				m_particle.second->life_randomness = lr;
+			}
+		}
+	}
+	static inline std::vector<ParticleEffect*> m_particle_arr = {};
+};
 struct BatchRenderer {
 	void Render() {
+		for (int i = 0u; i < ParticleEffect::m_particle_arr.size(); i++) {
+			ParticleEffect* s = ParticleEffect::m_particle_arr[i];
+			if (s == nullptr) {
+				ParticleEffect::m_particle_arr.erase(ParticleEffect::m_particle_arr.begin() + i);
+				continue;
+			}
+			s->Render();
+		}
 		for (unsigned int i = 0; i < Sprite::_mglobalspritearr.size(); i++) {
 			Sprite* s = Sprite::_mglobalspritearr[i];
-			if (s == NULL || s == nullptr || &s->pixels == NULL) {
+			if (s == nullptr) {
 				Sprite::_mglobalspritearr.erase(Sprite::_mglobalspritearr.begin() + i);
 				continue;
 			}
 			(s->enabled) ? s->Draw() : noop ;
 		}
-
 	}
 };
 

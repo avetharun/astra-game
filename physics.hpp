@@ -122,10 +122,6 @@ struct MeshLine {
 	void __gc() {
 		
 	}
-	std::function< void(MeshLine*) > OnColliderHit = [](MeshLine* other) {};
-	void lu_setCallback(std::function< void(MeshLine*) > callback_func) {
-		this->OnColliderHit = callback_func;
-	}
 };
 
 
@@ -229,7 +225,7 @@ Memory allocated: %zi bytes
 		return m_out;
 	}
 	static std::function< void(RectCollider2d*, RectCollider2d*) > OnColliderHit;
-	static std::function< void(RectCollider2d*, MeshLine*) > OnLineHit;
+	static std::function< void(RectCollider2d*, MeshLine*) > OnLineHitRect;
 
 	void recalc() {
 		*this->rect = recalc(*this);
@@ -449,6 +445,65 @@ public:
 		}
 		return false;
 	};
+	static bool TestExcept(Vector2 start, Vector2 end, int layer) {
+		RaycastHit::hasHit = false;
+		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
+		//SDL_RenderDrawLine(__phys_internal_renderer, start.x, start.y, end.x, end.y);
+		for (unsigned int i = 0; i < RectCollider2d::_mGlobalColArr.size() && !RaycastHit::hasHit; i++) {
+			RectCollider2d* _thiscol = RectCollider2d::_mGlobalColArr[i];
+			if (_thiscol->layer == layer || _thiscol->layer == COL_CENTER) {
+				continue;
+			}
+				_thiscol->recalc();
+				//printf("Calculating rect with collider type %s : %d\n", coltohr(RectCollider2d::_mGlobalColArr[i]->layer), i);
+				SDL_Rect* r = _thiscol->rect;
+				SDL_Rect lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
+				bool o = lineRect(start, end, r);
+				if (o) {
+					RaycastHit::object = _thiscol;
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = _thiscol->id;
+					RaycastHit::layer = _thiscol->layer;
+					return true;
+				}
+		}
+		for (unsigned int li = 0; li < MeshCollider2d::_mGlobalColArr.size(); li++) {
+			MeshCollider2d* m = MeshCollider2d::_mGlobalColArr[li];
+			for (size_t lo = 0; lo < m->lines.size(); lo++) {
+				MeshLine l = *m->lines[lo];
+				if (l.layer == layer || l.layer == COL_CENTER) {
+					continue;
+				}
+				Vector2 s = l.start - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				Vector2 e = l.end - *Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+				SDL_Rect lr = MeshLine::bounding_boxi(s.x, s.y, e.x, e.y);
+				SDL_Rect c_lr = MeshLine::bounding_boxi(start.x, start.y, end.x, end.y);
+				if (__phys_is_debug) {
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 255, 255, 32);
+					SDL_RenderDrawRect(__phys_internal_renderer, &lr);
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 128, 32);
+					SDL_RenderDrawRect(__phys_internal_renderer, &c_lr);
+					SDL_SetRenderDrawColor(__phys_internal_renderer, 128, 255, 255, 128);
+					SDL_RenderDrawLine(__phys_internal_renderer, s.x, s.y, e.x, e.y);
+				}
+				if (!VectorRect::checkCollision(&c_lr, &lr)) { continue; }
+
+				bool o = TestLineImplV(start, end, s, e);
+				if (o) {
+					RaycastHit::object = MeshCollider2d::_mGlobalColArr[li];
+					RaycastHit::start = start;
+					RaycastHit::end = end;
+					RaycastHit::hasHit = true;
+					RaycastHit::col_id = l.id;
+					RaycastHit::layer = l.layer;
+					return true;
+				}
+			}
+		}
+		return false;
+	};
 	static bool TestRect(Vector2 start, Vector2 end, int layer) {
 		RaycastHit::hasHit = false;
 		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
@@ -498,6 +553,8 @@ public:
 		}
 		return false;
 	};
+	// This function name is counter-intuitive, it actually checks to see if rect R collides with anything *except* a specific collider. 
+	// This is used internally to check for player collisions.
 	static bool TestRectExcept(SDL_Rect* rect, int layer, RectCollider2d* ignored_col) {
 		RaycastHit::hasHit = false;
 		//SDL_SetRenderDrawColor(__phys_internal_renderer, 255, 64, 255, 255);
@@ -548,8 +605,8 @@ public:
 	static bool TestCircle(Vector2 start, int diameter, int layer) {
 		for (float a = 0; a < 360; a+=(360.0f/ diameter) / 512.0f) {
 			Vector2 i(
-				start.x + (diameter * cos(a * alib_rad2deg)),
-				start.y + (diameter * sin(a * alib_rad2deg))
+				start.x + (diameter * cos(alib_deg2rad(a))),
+				start.y + (diameter * sin(alib_deg2rad(a)))
 			);
 			if (Test(start, i, layer)) {
 				return true;
@@ -560,8 +617,8 @@ public:
 	static bool TestCone(Vector2 start, int angle, int offset, int dist, int layer) {
 		for (float a = 0 - angle+offset; a < angle+offset; a+= (360.0f + angle + offset) / 512.0f) {
 			Vector2 i(
-				start.x+(dist*cos(a * alib_rad2deg)),
-				start.y+(dist*sin(a * alib_rad2deg))
+				start.x+(dist*cos(alib_deg2rad(a))),
+				start.y+(dist*sin(alib_deg2rad(a)))
 			);
 			if (Test(start, i, layer)) {
 				return true;
@@ -578,7 +635,30 @@ public:
 	static bool TestAnyCircle(Vector2 start, int diameter) {
 		return TestCircle(start, diameter, -1);
 	}
-	
+	static bool TestConeExcept(Vector2 start, int angle, int offset, int dist, int layer) {
+		for (float a = 0 - angle + offset; a < angle + offset; a += (360.0f + angle + offset) / 512.0f) {
+			Vector2 i(
+				start.x + (dist * cos(alib_deg2rad(a))),
+				start.y + (dist * sin(alib_deg2rad(a)))
+			);
+			if (TestExcept(start, i, layer)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	static bool TestCircleExcept(Vector2 start, int diameter, int layer) {
+		for (float a = 0; a < 360; a += (360.0f / diameter) / 512.0f) {
+			Vector2 i(
+				start.x + (diameter * cos(alib_deg2rad(a))),
+				start.y + (diameter * sin(alib_deg2rad(a)))
+			);
+			if (TestExcept(start, i, layer)) {
+				return true;
+			}
+		}
+		return false;
+	}	
 };
 
 

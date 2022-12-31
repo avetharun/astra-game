@@ -29,14 +29,12 @@ struct cwError {
 		case CW_DEBUG: return "DBG";
 		}
 	}
+	static inline alib_stack<cwWarnings> WarningTypeStack = {};
 	static inline cwWarnings warningState{};
-	static inline const char* errorStr{};
+	static inline std::string errorStr = "";
 	static inline bool debug_enabled = true;
-	cwError() {
-		alib_set_byte(const_cast<char*>(errorStr), '\0');
-	}
 	static const char* geterror() {
-		return errorStr;
+		return errorStr.c_str();
 	}
 //	   ERR_STATE != CW_NONE :
 //      -> ERR_STATE|ERR_MSG
@@ -55,6 +53,23 @@ struct cwError {
 		warningState = state;
 		return state;
 	}
+	// Return the current or topmost error state
+	static uint32_t gstate() {
+		return WarningTypeStack.size() == 0 ? warningState : WarningTypeStack.top();
+	}
+	static void pstate(cwWarnings state) {
+		WarningTypeStack.push_back(state);
+	}
+	static void push(cwWarnings state) {
+		pstate(state);
+	}
+	
+	static void postate() {
+		WarningTypeStack.pop_back();
+	}
+	static void pop() {
+		postate();
+	}
 	static void serror(const char* err) {
 		// return if debugging isn't enabled, and are sending a debug message.
 		if (!debug_enabled && (warningState == CW_DEBUG)) {
@@ -68,24 +83,20 @@ struct cwError {
 		if (!debug_enabled && (warningState == CW_DEBUG)) {
 			return;
 		}
-		free(const_cast<char*>(errorStr));
-		alib_va_arg_parse(const_cast<char*>(errorStr), fmt, args);
-		onError(errorStr, sstate());
+		errorStr = alib_strfmtv(fmt, args);
+		onError(errorStr.c_str(), gstate());
 	}
 	static void serrof(const char* fmt, ...) {
 		// return if debugging isn't enabled, and are sending a debug message.
 		if (!debug_enabled && (warningState == CW_DEBUG)) {
 			return;
 		}
-		//free(const_cast<char*>(errorStr));
+		errorStr.clear();
 		va_list args;
 		va_start(args, fmt);
-		if (args == nullptr || !SUCCEEDED(args) || (char) args[0] == 0xcc) {return;}
-		size_t bufsz = snprintf(NULL, 0, fmt, args);
-		errorStr = (const char*)malloc(bufsz);
-		vsprintf((char*)errorStr, fmt, args);
+		errorStr.append(alib_strfmtv(fmt, args));
 		va_end(args);
-		onError(errorStr, sstate());
+		onError(errorStr.c_str(), gstate());
 	}
 };
 

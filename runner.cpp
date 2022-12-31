@@ -49,6 +49,7 @@ int main(int argc, char **argv)
 		} 
 
 	}
+	CWSettings::Save();
 	ImGui_ImplSDLRenderer_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	try {

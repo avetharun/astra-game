@@ -52,12 +52,46 @@ struct cwLayout : public ABT {
 		return { alib_j_getd(stub[0]),alib_j_getd(stub[1]),alib_j_getd(stub[2]), alib_j_getd(stub[3]) };
 	}
 	std::map<std::string, json> template_assets;
-	std::map<std::string, Sprite*> sprite_assets;
+	std::vector<std::pair<std::string, Sprite*>> sprite_assets;
 	std::map<std::string, std::vector<std::string>> asset_schemas;
 	std::map<std::string, VectorRect> asset_image_size;
 	std::map<std::string, Transform*> asset_transforms;
 	std::map<std::string, UI::ImageElement*> ui_img_elem_assets;
 	std::map<std::string, UI::TextElement*> ui_txt_elem_assets;
+
+
+	nlohmann::json ParseLayerR(int layer) {
+		if (layer == INT32_MIN) { return "bottom"; }
+		if (layer == INT32_MAX) { return "top"; }
+		return layer;
+	}
+	int ParseLayerS(nlohmann::json layer) {
+		if (layer == "bottom") { return INT32_MIN; }
+		if (layer == "top") { return INT32_MAX; }
+		return layer;
+	}
+	nlohmann::json ParseParticleRectR(VectorRect r) {
+		return {
+			{"x", r.x},
+			{"y", r.y},
+			{"w", r.w},
+			{"h", r.h}
+		};
+	}
+	Vector2 ParseParticleVec2S(nlohmann::json r) {
+		return { alib_j_getf(r["x"]), alib_j_getf(r["y"]) };
+	}
+	nlohmann::json ParseParticleVec2R(Vector2 r) {
+		return { {"x", r.x}, {"y",r.y} };
+	}
+	VectorRect ParseParticleRectS(nlohmann::json r) {
+		return VectorRect(alib_j_getf(r["x"]), alib_j_getf(r["y"]), alib_j_getf(r["w"]), alib_j_getf(r["h"]));
+	}
+
+	SDL_Rect ParseParticleSDLRectS(nlohmann::json r) {
+		return SDL_Rect(alib_j_getf(r["x"]), alib_j_getf(r["y"]), alib_j_getf(r["w"]), alib_j_getf(r["h"]));
+	}
+
 	MeshCollider2d* thisMesh;
 	MeshCollider2d* __parse_scene_mesh(json& stub) {
 		json stub_ad = stub["asset_data"];
@@ -67,31 +101,21 @@ struct cwLayout : public ABT {
 		size_t rect_amt = stub_rects.size();
 		printf("Starting to create scene mesh.. Amount of lines: %zi\n", line_amt);
 		thisMesh = new MeshCollider2d();
-		int __layer = COL_EMPTY;
-		if (stub_ad.contains("layer")) {
-			std::string _s = alib_lowers(alib_j_getstr(stub_ad.at("layer")));
-			if (alib_streq(_s, "solid")) {
-				__layer = COL_SOLID;
-			}
-			if (alib_streq(_s, "empty")) {
-				__layer = COL_EMPTY;
-			}
-		}
 		//int __layer = stub_ad["layer"];
 		for (int i = 0; i < line_amt; i++) {
 			MeshLine* _m = new MeshLine();
-			_m->layer = __layer;
 			_m->start = parse_vector2a(stub_lines.at(i).at(0));
 			_m->end = parse_vector2a(stub_lines.at(i).at(1));
-			if (stub_lines.at(i).array().size() > 1) {
+			if (stub_lines.at(i).size() > 1) {
 				_m->id = stub_lines.at(i).at(2);
+				printf(_m->id.c_str());
 			}
 			if (stub_lines.at(i).size() > 2) {
-				if (stub_lines.at(i).at(2).is_string()) {
-					_m->layer = hrtocol(stub_lines.at(i).at(2));
+				if (stub_lines.at(i).at(3).is_string()) {
+					_m->layer = hrtocol(stub_lines.at(i).at(3));
 				}
 				else {
-					_m->layer = stub_lines.at(i).at(2);
+					_m->layer = stub_lines.at(i).at(3);
 				}
 			}
 			thisMesh->lines.push_back(_m);
@@ -99,7 +123,6 @@ struct cwLayout : public ABT {
 		}
 		for (int i = 0; i < rect_amt; i++) {
 			RectCollider2d* _m = new RectCollider2d();
-			_m->layer = __layer;
 			*_m->ws_rect = parse_vector4as(stub_rects.at(i));
 			
 			if (stub_rects.at(i).size() > 3) {
@@ -121,9 +144,11 @@ struct cwLayout : public ABT {
 		if (alib_j_cokeys(stub, "asset_data\nfilename")) {
 			json stub_ad = stub["asset_data"];
 			json stub_tr = stub["asset_data"]["transform"];
+			std::string id = stub["id"].get<std::string>();
 			double ox, oy;
 			double x = 0, y = 0, w, h;
 			SDL_Rect __uv = {0,0,0,0};
+			SpriteAnimationMeta _meta;
 			if (alib_j_cokeys(stub["asset_data"], "uv")) {
 				if (stub["asset_data"]["uv"].is_array()) {
 					json uvstub = stub["asset_data"]["uv"];
@@ -133,8 +158,14 @@ struct cwLayout : public ABT {
 					__uv.h = uvstub[1][1].get<int>();
 				}
 			}
-			std::string id = stub["id"].get<std::string>();
+			if (alib_j_cokeys(stub["asset_data"], "meta")) {
+				auto& stub_meta = stub["asset_data"]["meta"];
+				if (stub_meta.contains("delay")) { _meta.delay = stub_meta["delay"]; }
+				if (stub_meta.contains("frames")) { _meta.frames= stub_meta["frames"]; }
+				if (stub_meta.contains("animate")) { _meta.animate = stub_meta["animate"]; }
+			}
 			Sprite* _s = new Sprite(alib_j_getstr(stub["asset_data"]["filename"]).c_str(), __uv);
+			_s->meta = _meta;
 			_s->setID(id);
 			if (stub_tr.at("w").is_string()) { w = alib_percents(_s->uv.w, stub_tr.at("w").get<std::string>()); } else {w = stub_tr.at("w").get<int>();}
 			if (stub_tr.at("h").is_string()) { h = alib_percents(_s->uv.h, stub_tr.at("h").get<std::string>()); } else {h = stub_tr.at("h").get<int>();}
@@ -148,7 +179,7 @@ struct cwLayout : public ABT {
 			}
 			if ((stub_tr.contains("x")) && stub_tr.at("x").is_number_integer()) { x = stub_tr.at("x").get<int>(); }
 			if ((stub_tr.contains("y")) && stub_tr.at("y").is_number_integer()) { y = stub_tr.at("y").get<int>(); }
-			printf("CW: Created world sprite %s with %f, %f at %f, %f using origin %f, %f\n", _s->identifier, w, h, x, y, ox, oy);
+			printf("CW: Created world sprite %s with %f, %f at %f, %f using origin %f, %f\n", _s->identifier.c_str(), w, h, x, y, ox, oy);
 			this->asset_image_size.insert({ stub["id"], {x,y,w,h} });
 			_s->transform = Transform{
 				{x,y},
@@ -171,10 +202,43 @@ struct cwLayout : public ABT {
 				}
 			}
 			
-			sprite_assets.insert({ stub.at("id"), (_s) });
+			sprite_assets.push_back({ stub.at("id"), (_s) });
 			return _s;
 		}
 		return nullptr;
+	}
+	/*
+	
+			asset["asset_data"] = {
+				{"layer", ParseLayerI(pe.second->m_layer)},
+				{"particle_type", "custom"},
+				{"lifetime", pe.second->m_lifetime},
+				{"count", pe.second->amt},
+				{"rect", ParseParticleRectR(*pe.second->m_particle_sprite->rect)},
+				{"dir", ParseParticleVec2R(pe.second->m_direction)},
+				{"pos", ParseParticleVec2R(pe.second->start_pos)},
+				{"randomness", ParseParticleVec2R(pe.second->m_randomness)},
+				{"velocity", pe.second->m_velocity}
+			};
+	*/
+	void parse_scene_particle(nlohmann::json a_stub) {
+		ParticleEffects::stub _customstub;
+		
+		nlohmann::json ad_stub = a_stub["asset_data"];
+		_customstub.size = parse_vector2a(ad_stub["size"]);
+		nlohmann::json _u = ad_stub["uv"];
+		_customstub.uv = { alib_j_geti(_u["x"]), _u["y"], _u["w"], _u["h"]};
+		_customstub.layer = ParseLayerS(ad_stub["layer"]);
+		_customstub.lifetime = ad_stub["lifetime"];
+		_customstub.randomness = ParseParticleVec2S(ad_stub["randomness"]);
+		_customstub.velocity = ad_stub["velocity"];
+		_customstub.id = a_stub["id"];
+		ParticleEffect* e = new ParticleEffect(_customstub, ad_stub["count"]);
+		e->start_pos = ParseParticleVec2S(ad_stub["pos"]);
+		e->m_dir_angle_rad = alib_deg2rad(ad_stub["dir"]);
+		ParticleEffect::m_particle_arr.push_back(e);
+		
+
 	}
 	void parse_scene_assets() {
 		if (!this->data.contains("layout")) { return; }
@@ -200,6 +264,9 @@ struct cwLayout : public ABT {
 					this->asset_schemas.insert({stub.at("id"), _s});
 					if (alib_j_costr(stub["schema"], "mesh")) {
 						MeshCollider2d* _mesh = __parse_scene_mesh(stub);
+					}
+					if (alib_j_costr(stub["schema"], "particle")) {
+						parse_scene_particle(stub);
 					}
 					if (alib_j_costr(stub["schema"], "ui")) {
 						if (alib_j_costr(stub["schema"], "image")) {
@@ -263,12 +330,17 @@ public:
 	void Discard() {
 		if (this == nullptr) { return; }
 		this->invalidate();
-
-		for (int i = 0; i < Sprite::_mglobalspritearr.size(); i++) {
-			if (this->sprite_assets.contains(Sprite::_mglobalspritearr.at(i)->identifier)) {
-				Sprite::_mglobalspritearr.erase(Sprite::_mglobalspritearr.begin() + i);
+		for (int i = 0; i < sprite_assets.size(); i++) {
+			if (Sprite::getElementByID(sprite_assets.at(i).first)) {
+				Sprite::_mglobalspritearr.erase(Sprite::_mglobalspritearr.begin() + alib_FindValueInVector(Sprite::_mglobalspritearr, sprite_assets.at(i).second));
 			}
 		}
+		for (int i = 0; i < ParticleEffect::m_particle_arr.size(); i++) {
+			auto& ep = ParticleEffect::m_particle_arr.at(i);
+			ep->operator~();
+		}
+
+		ParticleEffect::m_particle_arr.clear();
 		MeshCollider2d::_mGlobalColArr.erase(std::find(MeshCollider2d::_mGlobalColArr.begin(), MeshCollider2d::_mGlobalColArr.end(), this->thisMesh));
 		for (const auto& kv : ui_img_elem_assets) {
 			try {
@@ -287,12 +359,38 @@ public:
 		nlohmann::json out;
 		out["version"] = this->version;
 		out["autoexec"] = this->autoexec;
+		for (auto& pe: ParticleEffect::m_particle_arr) {
+			nlohmann::json asset{};
+			asset["id"] = pe->name;
+			asset["schema"] = { "particle" };
+			asset["asset_data"] = {
+				{"layer", ParseLayerR(pe->m_layer)},
+				{"lifetime", pe->m_lifetime},
+				{"count", pe->amt},
+				{"size", {pe->effect.size.x, pe->effect.size.y}},
+				{"dir", alib_rad2deg(pe->m_dir_angle_rad)},
+				{"pos", ParseParticleVec2R(pe->start_pos)},
+				{"randomness", ParseParticleVec2R(pe->m_randomness)},
+				{"velocity", pe->m_velocity},
+				{"uv", {
+					{"x",pe->m_uv.x},
+					{"y",pe->m_uv.y},
+					{"w",pe->m_uv.w},
+					{"h",pe->m_uv.h}
+				}}
+			};
+
+			if (pe->m_particle_sprite->meta.frames > 0) {
+				asset["asset_data"]["meta"] = {
+					{"animate", pe->m_particle_sprite->meta.animate},
+					{"frames", pe->m_particle_sprite->meta.frames},
+					{"delay",  pe->m_particle_sprite->meta.delay}
+				};
+			}
+			out["layout"].push_back(asset);
+		}
 		for (auto& pair : sprite_assets) {
 			nlohmann::json asset{};
-			asset["id"] = pair.first;
-			if (asset_schemas.contains(pair.first)) {
-				asset["schema"] = asset_schemas.at(pair.first);
-			}
 			Transform t = pair.second->transform;
 			SDL_Rect u = pair.second->uv;
 			json layer;
@@ -305,7 +403,7 @@ public:
 			printf(pair.second->name.c_str());
 			asset["asset_data"] = {
 				{"filename", pair.second->name},
-				{"layer", layer},
+				{"layer", ParseLayerR(layer)},
 				{"transform", {
 						{"x", (int)t.position.x}, {"y", (int)t.position.y},
 						{"w", (int)t.scale.x}, {"h", (int)t.scale.y}
@@ -313,6 +411,15 @@ public:
 				},
 				{"uv", { {u.x, u.y}, {u.w, u.h} }}
 			};
+			if (pair.second->meta.frames > 0) {
+				asset["asset_data"]["meta"] = {
+					{"animate", pair.second->meta.animate},
+					{"frames", pair.second->meta.frames},
+					{"delay", pair.second->meta.delay}
+				};
+			}
+			asset["id"] = pair.first;
+			asset["schema"].push_back("image");
 			out["layout"].push_back(asset);
 		}
 
@@ -338,7 +445,6 @@ public:
 			coll_asset["id"] = "colliders";
 			coll_asset["schema"] = { "mesh" };
 			coll_asset["asset_data"] = {
-				{"layer", "solid"},
 				{"lines", _coll_linedefs},
 				{"rects", _coll_rectdefs},
 			};

@@ -249,7 +249,7 @@
     <ClInclude Include="cwlib\_cwincludes.h" />
     <ClInclude Include="engine.hpp" />
     <ClInclude Include="e_colors.hpp" />
-    <ClInclude Include="e_keybindings.h" />
+    <ClInclude Include="input.h" />
     <ClInclude Include="game.hpp" />
     <ClInclude Include="GUIRenderer.h" />
     <ClInclude Include="imgui\imconfig.h" />
@@ -271,6 +271,7 @@
     <ClInclude Include="physics.hpp" />
     <ClInclude Include="playercontroller.hpp" />
     <ClInclude Include="renderer.hpp" />
+    <ClInclude Include="settings.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="utils.hpp" />
     <ClInclude Include="Vectors.hpp" />

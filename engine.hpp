@@ -28,7 +28,7 @@ typedef __int64 int64;
 #include "imgui/imgui_impl_sdlrenderer.h"
 
 #include "cwlib/cwlib.hpp"
-#include "e_keybindings.h"
+#include "input.h"
 
 #include "global.h"
 
@@ -94,49 +94,9 @@ public:
 			ZeroMemory(this, 0);
 		}
 	};
-	struct Keyboard {
-		char keys[1024]{};
-		char key_frame[1024]{};
-		std::function <void(unsigned char)> onKeyPress = [](  unsigned char) {};
-		std::function <void(unsigned char)> onKeyRelease = [](unsigned char) {};
-		std::function <void(unsigned char)> onKeyHold = [](   unsigned char) {};
-
-		void EmulateKeyboardDown(unsigned char key, SDL_Event ev) {
-			keys[key] = true;
-			if (key_frame[key] == -12) {
-				key_frame[key] = true;
-				onKeyPress(key);
-				return;
-			}
-			onKeyHold(key);
-		}
-		void EmulateKeyboardUp(unsigned char key, SDL_Event ev) {
-			keys[key] = false;
-			key_frame[key] = -12;
-			onKeyRelease(key);
-		}
-		bool GetKey(int k) { // Is Key pressed?
-			return keys[k];
-		}
-		bool GetKeyPressed(int k) { // Key pressed this frame?
-			return key_frame[k];
-		}
-		void flush() {
-			memset(keys, 0, 1024);
-		}
-	};
-	struct Mouse {
-		float sy, sd {0};
-		int x, y, dx, dy {0};
-		bool m1d, m2d, m3d, mt1d, mt2d{ false };
-		
-		std::function <void(int, int, bool, bool, bool, bool, bool)> onClick = [](int x, int y, bool l, bool r, bool m, bool t1, bool t2) {};
-		std::function <void(float)> onScroll = [](float y) {};
-		std::function <void(int, int)> onMove = [](int x, int y) {};
-	};
 	bool hasFocus;
-	Mouse mouse;
-	Keyboard keyboard;
+	Input::Mouse mouse;
+	Input::Keyboard keyboard;
 	std::vector<Component*> components;
 	void operator << (Component* o) { components.push_back(o); } // Add component to window. Used internally by AddComponent(Component* c)
 	void operator >> (Component* o) { // Removes component. Used internally by RemoveComponent(Component* c)
@@ -226,7 +186,7 @@ public:
 		CWLGlobals::SymbolFont = io.Fonts->AddFontFromMemoryTTF(CWLGlobals::SymbolFontData, symbol_font_sz, 13, nullptr, _ranges);
 		io.Fonts->Build();
 		
-		ImGui_ImplSDL2_InitForSDLRenderer(SDL_WIND);
+		ImGui_ImplSDL2_InitForSDLRenderer(SDL_WIND, SDL_REND);
 		ImGui_ImplSDLRenderer_Init(SDL_REND);
 		initRenderer__PHYS(SDL_REND);
 		keyboard.flush();
@@ -312,6 +272,7 @@ public:
 
 	void DebugWindow() {
 		ImGui::Begin("Debug Console");
+		Input::Keyboard::input_stolen = ImGui::IsWindowHovered() || ImGui::IsWindowFocused();
 		ImGui::BeginChildFrame(10, {0,ImGui::GetWindowHeight() - 75});
 		if (cons.debugWindowConsoleText.size() > 2048) {
 			std::string __tmp = cons.debugWindowConsoleText.end() - 2044;
@@ -393,7 +354,7 @@ public:
 						int x1 = s.x; int y1 = s.y;
 						int x2 = e.x; int y2 = e.y;
 						if (SDL_IntersectRectAndLine(&r1, &x1, &y1, &x2, &y2) && !getbitv(this->data, 8)) {
-							RectCollider2d::OnLineHit(currect, line);
+							RectCollider2d::OnLineHitRect(currect, line);
 						}
 					}
 				}
@@ -417,6 +378,7 @@ public:
 		SDL_RenderPresent(SDL_REND);
 	}
 	void procEvent() {
+		mouse.m1df = mouse.m2df = mouse.m3df = mouse.mt1df = mouse.mt2df = false;
 		while (SDL_PollEvent(&sdlevent))
 		{
 			ImGui_ImplSDL2_ProcessEvent(&sdlevent);
@@ -424,23 +386,52 @@ public:
 			switch (sdlevent.type)
 			{
 			default: break;
-			case SDL_MOUSEBUTTONUP:
+			case SDL_MOUSEBUTTONUP: {
+				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+					mouse.m1d = false;
+				}
+				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
+					mouse.m2d = false;
+				}
+				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+					mouse.m3d = false;
+				}
+				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_X1)) {
+					mouse.mt1d = false;
+				}
+				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_X2)) {
+					mouse.mt2d = false;
+				}
+			}
 			case SDL_MOUSEBUTTONDOWN: {
-
-				mouse.m1d = false; mouse.m2d = false; mouse.m3d = false; mouse.mt1d = false; mouse.mt2d = false;
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+					if (!mouse.m1d) {
+						mouse.m1df = true;
+					}
 					mouse.m1d = true;
 				}
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
+					if (!mouse.m2d) {
+						mouse.m2df = true;
+					}
 					mouse.m2d = true;
 				}
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+					if (!mouse.m2d) {
+						mouse.m2df = true;
+					}
 					mouse.m3d = true;
 				}
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_X1)) {
+					if (!mouse.mt1d) {
+						mouse.mt1df = true;
+					}
 					mouse.mt1d = true;
 				}
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_X2)) {
+					if (!mouse.mt2d) {
+						mouse.mt2df = true;
+					}
 					mouse.mt2d = true;
 				}
 				mouse.onClick(mouse.x, mouse.y, mouse.m1d, mouse.m2d, mouse.m3d, mouse.mt1d, mouse.mt2d);
@@ -620,8 +611,6 @@ void Window::PostRenderInternal() {
 	}
 }
 #pragma endregion
-#define Keyboard Window::WindowInstance->keyboard
-#define Mouse Window::WindowInstance->mouse
 #define WindowRenderer Window::WindowInstance->SDL_REND
 #define Win Window::WindowInstance
 #endif

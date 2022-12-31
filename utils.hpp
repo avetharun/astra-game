@@ -48,18 +48,107 @@
                        // Also added assert handling
 #include <string>
 #include <assert.h>
+#include <vector>
+#include <map>
+#include <unordered_map>
+#include <format>
 #include <stdarg.h>
 #define _ALIB_FQUAL static inline
 std::string ___nn_alib_error_charp_str;
-_ALIB_FQUAL char* alib_strfmt(const char* fmt, ...);
-#define alib_get_error() ___nn_alib_error_charp_str.c_str()
-#define alib_set_error(...) ___nn_alib_error_charp_str = alib_strfmt(__VA_ARGS__);
 
-#define alib_rad2deg M_PI / 180
-#define alib_deg2rad M_PI * 180
-#define alib_1rad 180 / M_PI
+struct alib_string : std::string {
+    
+    operator const char* () {
+        return this->c_str();
+    }
+    operator char* () {
+        return (char*)this->c_str();
+    }
+    alib_string(std::string other) {
+        this->swap(other);
+    }
+    alib_string(const char* buf) {
+        this->append(buf);
+    }
+};
+template<typename K, typename V>
+std::map<V, K> alib_reverse_map(const std::map<K, V>& m) {
+    std::map<V, K> r;
+    for (const auto& kv : m) {
+        r[kv.second] = kv.first;
+    }
+    return r;
+}
+template<typename K, typename V>
+std::unordered_map<V, K> alib_reverse_hmap(const std::unordered_map<K, V>& m) {
+    std::unordered_map<V, K> r;
+    for (const auto& kv : m) {
+        r[kv.second] = kv.first;
+    }
+    return r;
+}
+template <typename k, typename v>
+bool alib_VectorWithPairContains(std::vector<std::pair<k, v>> vec, k key) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (vec.at(i).first == key) {
+            return true;
+        }
+    }
+    return false;
+}
+template <typename v>
+size_t alib_FindValueInVector(std::vector<v> vec, v val) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (vec.at(i) == val) {
+            return i;
+        }
+    }
+    return vec.size();
+}
 
 
+template <typename k, typename v>
+size_t alib_FindOffsetOfPairInVector(std::vector<std::pair<k, v>> vec, k key) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (vec.at(i).first == key) {
+            return i;
+        }
+    }
+    return vec.size();
+}
+template <typename... Args>
+void alib_set_error(std::string_view rt_fmt_str, Args&&... args) {
+    ___nn_alib_error_charp_str = std::vformat(rt_fmt_str, std::make_format_args(args...));
+}
+
+
+#define alib_get_error_c() ___nn_alib_error_charp_str.c_str()
+#define alib_get_error_s() ___nn_alib_error_charp_str
+
+#define M_E        2.71828182845904523536   // e
+#define M_LOG2E    1.44269504088896340736   // log2(e)
+#define M_LOG10E   0.434294481903251827651  // log10(e)
+#define M_LN2      0.693147180559945309417  // ln(2)
+#define M_LN10     2.30258509299404568402   // ln(10)
+#define M_PI       3.14159265358979323846   // pi
+#define M_PI_2     1.57079632679489661923   // pi/2
+#define M_PI_180   0.01745329251            // pi/180
+#define M_PIx180   565.486677646            // pi*180
+#define M_PI_4     0.785398163397448309616  // pi/4
+#define M_1_PI     0.318309886183790671538  // 1/pi
+#define M_2_PI     0.636619772367581343076  // 2/pi
+#define M_2_SQRTPI 1.12837916709551257390   // 2/sqrt(pi)
+#define M_SQRT2    1.41421356237309504880   // sqrt(2)
+#define M_SQRT1_2  0.707106781186547524401  // 1/sqrt(2)
+
+constexpr float alib_1rad = 180 / M_PI;
+
+float alib_rad2deg(float rad) {
+    return rad * 180 / M_PI;
+}
+float alib_deg2rad(float deg) {
+    return deg * M_PI / 180;
+}
 
 // Note: ignore any "function definition for typedef_func_ty" or "Y is not defined" errors. They're temporary.
 #define d_typedef_func_ty(return_z, name, ...) typedef return_z (*name)(__VA_ARGS__);
@@ -130,19 +219,6 @@ struct ALStack
         CODE_TO_RUN;\
     }catch(std::exception ignored){}
 
-#define M_E        2.71828182845904523536   // e
-#define M_LOG2E    1.44269504088896340736   // log2(e)
-#define M_LOG10E   0.434294481903251827651  // log10(e)
-#define M_LN2      0.693147180559945309417  // ln(2)
-#define M_LN10     2.30258509299404568402   // ln(10)
-#define M_PI       3.14159265358979323846   // pi
-#define M_PI_2     1.57079632679489661923   // pi/2
-#define M_PI_4     0.785398163397448309616  // pi/4
-#define M_1_PI     0.318309886183790671538  // 1/pi
-#define M_2_PI     0.636619772367581343076  // 2/pi
-#define M_2_SQRTPI 1.12837916709551257390   // 2/sqrt(pi)
-#define M_SQRT2    1.41421356237309504880   // sqrt(2)
-#define M_SQRT1_2  0.707106781186547524401  // 1/sqrt(2)
 bool alib_atob(const char* buffer) {
     size_t l = strlen(buffer);
     if (l >= 1) {
@@ -200,9 +276,8 @@ char* alib_itoa(int num, char* buffer, int base) {
     buffer[curr] = '\0';
     return buffer;
 }
-char* alib_ftoa(float f)
+char* alib_ftoa(char* buf, size_t len, float f)
 {
-    static char        buf[17];
     char* cp = buf;
     unsigned long    l, rem;
 
@@ -213,7 +288,7 @@ char* alib_ftoa(float f)
     l = (unsigned long)f;
     f -= (float)l;
     rem = (unsigned long)(f * 1e6);
-    sprintf(cp, "%lu.%6.6lu", l, rem);
+    snprintf(cp, len, "%lu.%6.6lu", l, rem);
     return buf;
 }
 #ifndef NDEBUG
@@ -348,9 +423,9 @@ bool alib_can_reach_mem(void* ptr) {
 #include <sstream>
 #include <string>
  // If size != 0, leave size as is
-_ALIB_FQUAL void __alib_internal_reqlen__f_impl(size_t* sz, const char* arr) {
+_ALIB_FQUAL void __alib_internal_reqlen__f_impl(size_t* sz, alib_string arr) {
     if ((*sz) == 0) {
-        (*sz) = strlen(arr);
+        *sz = arr.size();
     }
 }
 /* We want POSIX.1-2008 + XSI, i.e. SuSv4, features */
@@ -395,7 +470,7 @@ _ALIB_FQUAL const char* __alib_strfmt_file(const char* fmt, ...) {
     size_t bufsz = 0;
     bufsz = snprintf(NULL, 0, fmt, args);
     const char* _buf = (const char*)malloc(bufsz);
-    vsprintf((char*)_buf, fmt, args);
+    vsnprintf((char*)_buf, bufsz, fmt, args);
     va_end(args);
     return _buf;
 }
@@ -474,7 +549,7 @@ _ALIB_FQUAL void alib_file_read(const char* fname, const char* out_, unsigned lo
     fclose(file);
 }
 
-_ALIB_FQUAL void alib_file_write(const char* filen, const char* d, size_t l = 0) {
+_ALIB_FQUAL void alib_file_write(const char* filen, alib_string d, size_t l = 0) {
     std::ofstream file(filen, std::ios::out | std::ios::binary);
     __alib_internal_reqlen__f_impl(&l, d);
     file.write(d, l);
@@ -914,76 +989,29 @@ _ALIB_FQUAL size_t alib_va_arg_length(const char* fmt, ...) {
     return bufsz;
 }
 _ALIB_FQUAL size_t alib_va_arg_length(const char* fmt, va_list args) {
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
+    size_t bufsz = vsnprintf(NULL, 0, fmt, args);
     return bufsz;
-
 }
 
-// Note: you're expected to supply an empty pointer & manage memory after this! It uses malloc, not new.
-_ALIB_FQUAL void alib_va_arg_parse(char* buf, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
-    buf = (char*)malloc(bufsz + 1);
-    vsprintf((char*)buf, fmt, args);
-    va_end(args);
-}
-_ALIB_FQUAL void alib_va_arg_parse(char* buf, const char* fmt, va_list args) {
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
-    buf = (char*)malloc(bufsz + 1);
-    vsprintf((char*)buf, fmt, args);
-}
-_ALIB_FQUAL const char* alib_va_arg_parse(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
-    const char* _buf = (const char*)malloc(bufsz);
-    vsprintf((char*)_buf, fmt, args);
-    va_end(args);
+
+_ALIB_FQUAL alib_string alib_strfmtv(const char* fmt, va_list args) {
+    size_t bufsz = vsnprintf(NULL, 0, fmt, args);
+    char* _buf = new char[bufsz + 1];
+    vsnprintf(_buf, bufsz+1, fmt, args);
     return _buf;
 }
-_ALIB_FQUAL const char* alib_va_arg_parse(const char* fmt, va_list args) {
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
-    const char* _buf = (const char*)malloc(bufsz);
-    vsprintf((char*)_buf, fmt, args);
-    return _buf;
-}
-_ALIB_FQUAL const char* alib_strfmtv(const char* fmt, va_list args) {
-    size_t bufsz = snprintf(NULL, 0, fmt, args);
-    const char* _buf = (const char*)malloc(bufsz);
-    vsprintf((char*)_buf, fmt, args);
-    return _buf;
-}
-_ALIB_FQUAL char* alib_strfmt(const char* fmt, ...) {
+_ALIB_FQUAL alib_string alib_strfmt(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = 0;
     bufsz = vsnprintf(NULL, 0, fmt, args);
-    char* _buf = (char*)malloc(bufsz);
-    vsprintf(_buf, fmt, args);
+    char* _buf = new char[bufsz + 1];
+    vsnprintf(_buf, bufsz+1, fmt, args);
     va_end(args);
     return _buf;
 }
-_ALIB_FQUAL std::string alib_strfmts(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    size_t bufsz = 0;
-    bufsz = vsnprintf(NULL, 0, fmt, args);
-    char* _buf = (char*)malloc(bufsz);
-    vsprintf(_buf, fmt, args);
-    va_end(args);
-    return _buf;
-}
-
-_ALIB_FQUAL std::string alib_strfmtsv(const char* fmt, va_list args) {
-    std::string out;
-    size_t bufsz = 0;
-    bufsz = vsnprintf(NULL, 0, fmt, args);
-    char* _buf = new char[bufsz] {'\0'};
-    vsprintf(_buf, fmt, args);
-    out.append(_buf);
-    return out;
-}
+#define alib_strfmts alib_strfmt
+#define alib_strfmtsv alib_strfmtv
 _ALIB_FQUAL float alib_lerp_low(float a, float b, float f)
 {
     return a + f * (b - a);
@@ -1164,12 +1192,8 @@ _ALIB_FQUAL void alib_remove_any_of(std::vector<T> _v, T vy) {
 
 template <typename T>
 _ALIB_FQUAL bool alib_contains_any_of(std::vector<T> _v, T vy) {
-    for (int i = 0; i < _v.size(); i++) {
-        if (_v.at(i) == vy) {
-            return true;
-        }
-    }
-    return false;
+    auto& it = std::find(_v.begin(), _v.end(), vy);
+    return it != _v.end();
 }
 
 #endif // ALIB_NO_BYTE_UTILS

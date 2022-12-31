@@ -33,7 +33,7 @@
     <ClInclude Include="camera.hpp">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="e_keybindings.h">
+    <ClInclude Include="input.h">
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="engine.hpp">
@@ -140,6 +140,9 @@
     </ClInclude>
     <ClInclude Include="imgui\imgui_stdlib.h">
       <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="settings.h">
+      <Filter>game</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -2,6 +2,7 @@
 #define __htgnative_imgui_format_h_
 #pragma warning( push )
 
+#pragma warning( disable : 4996 )
 #pragma warning( disable : 4244 )
 
 #include "imgui.h"
@@ -143,7 +144,7 @@ namespace ImGui {
 			hex[hexCount] = 0;
 
 			unsigned int hexColor = 0;
-			if (sscanf(hex, "%x", &hexColor) > 0)
+			if (sscanf_s(hex, "%x", &hexColor) > 0)
 			{
 				color.x = static_cast<float>((hexColor & 0x00FF0000) >> 16) / 255.0f;
 				color.y = static_cast<float>((hexColor & 0x0000FF00) >> 8) / 255.0f;

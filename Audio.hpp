@@ -7,8 +7,10 @@
 
 #include <map>
 
-class AudioWAV {
-private:
+#include "camera.hpp"
+#include "utils.hpp"
+
+struct AudioWAV {
 	int selectedChannel = -1;
 	const char* status;
 	Mix_Music* chunk = nullptr;
@@ -16,8 +18,9 @@ private:
 	bool music = false;
 	bool loop = false;
 	std::string fname;
-public:
-	static std::map<std::string, AudioWAV*> audiofiles;
+	bool is_playsound;
+	Vector2 playsound_pos;
+	static inline std::map<std::string, AudioWAV*> audiofiles = {};
 	const char
 		*SDL_UNABLE_TO_INIT = "sdl_unable_to_init",
 		*WAV_FILE_MISSING = "wav_file_missing",
@@ -127,5 +130,4 @@ public:
 	}
 
 };
-std::map<std::string, AudioWAV*> AudioWAV::audiofiles = std::map<std::string, AudioWAV*>();
 #endif

@@ -2,9 +2,114 @@
   "autoexec": "main.lua",
   "layout": [
     {
+      "guiscale": 1.0,
+      "id": "rei_bedroom_bippo_item",
+      "name": "Bippo",
+      "schema": [
+        "item"
+      ],
+      "sprite": {
+        "asset_data": {
+          "filename": "sprites/sprites.png",
+          "layer": 0,
+          "transform": {
+            "h": 42,
+            "w": 30,
+            "x": 450,
+            "y": 140
+          },
+          "uv": [
+            [
+              7,
+              65
+            ],
+            [
+              11,
+              15
+            ]
+          ]
+        },
+        "id": "m_bippo_item_sprite",
+        "schema": [
+          "image"
+        ]
+      },
+      "tooltip": "My favorite teddy bear.. I don't want to lose him"
+    },
+    {
+      "guiscale": 0.6000000238418579,
+      "id": "rei_bedroom_candle_item",
+      "name": "Candle",
+      "schema": [
+        "item"
+      ],
+      "sprite": {
+        "asset_data": {
+          "filename": "sprites/sprites.png",
+          "layer": 0,
+          "transform": {
+            "h": 24,
+            "w": 24,
+            "x": 460,
+            "y": 110
+          },
+          "uv": [
+            [
+              0,
+              65
+            ],
+            [
+              6,
+              6
+            ]
+          ]
+        },
+        "id": "rei_bedroom_bedside_candle",
+        "schema": [
+          "image"
+        ]
+      },
+      "tooltip": "A candle my mother gave to me"
+    },
+    {
+      "guiscale": 1.0,
+      "id": "m_rei_bedroom_letter",
+      "name": "Letter",
+      "schema": [
+        "item"
+      ],
+      "sprite": {
+        "asset_data": {
+          "filename": "sprites/sprites.png",
+          "layer": 0,
+          "transform": {
+            "h": 24,
+            "w": 18,
+            "x": 50,
+            "y": 80
+          },
+          "uv": [
+            [
+              23,
+              66
+            ],
+            [
+              6,
+              8
+            ]
+          ]
+        },
+        "id": "",
+        "schema": [
+          "image"
+        ]
+      },
+      "tooltip": "A letter mother wrote me"
+    },
+    {
       "asset_data": {
         "count": 48,
-        "dir": 91,
+        "dir": 90.99998474121094,
         "layer": -100,
         "lifetime": 2.5,
         "pos": {
@@ -16,14 +121,14 @@
           "y": 0.0
         },
         "size": [
-          3,
-          6
+          3.0,
+          6.0
         ],
         "uv": {
-          "h": 1.0,
-          "w": 2.0,
-          "x": 2.0,
-          "y": 0.0
+          "h": 2,
+          "w": 1,
+          "x": 2,
+          "y": 1
         },
         "velocity": 10.0
       },
@@ -200,32 +305,6 @@
     },
     {
       "asset_data": {
-        "filename": "sprites/sprites.png",
-        "layer": 0,
-        "transform": {
-          "h": 24,
-          "w": 24,
-          "x": 385,
-          "y": 110
-        },
-        "uv": [
-          [
-            0,
-            64
-          ],
-          [
-            6,
-            6
-          ]
-        ]
-      },
-      "id": "rei_bedroom_bedside_candle",
-      "schema": [
-        "image"
-      ]
-    },
-    {
-      "asset_data": {
         "lines": [
           [
             [
@@ -237,7 +316,7 @@
               320.0
             ],
             "rei_bedroom_bed",
-            64
+            8
           ],
           [
             [
@@ -249,7 +328,7 @@
               70.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -261,7 +340,7 @@
               390.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -273,7 +352,7 @@
               385.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -285,7 +364,7 @@
               385.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -297,7 +376,7 @@
               620.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -309,7 +388,7 @@
               620.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -321,7 +400,7 @@
               320.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -333,7 +412,7 @@
               320.0
             ],
             "rei_bedroom_bed",
-            64
+            8
           ],
           [
             [
@@ -345,7 +424,7 @@
               620.0
             ],
             "rei_bedroom_door_exit",
-            64
+            8
           ],
           [
             [
@@ -357,7 +436,7 @@
               1054.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -369,7 +448,7 @@
               1054.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -381,7 +460,7 @@
               1054.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -393,7 +472,7 @@
               1222.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -405,7 +484,7 @@
               1054.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -417,7 +496,7 @@
               1222.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -429,7 +508,7 @@
               1222.0
             ],
             "",
-            64
+            8
           ],
           [
             [
@@ -441,7 +520,31 @@
               1222.0
             ],
             "",
-            64
+            8
+          ],
+          [
+            [
+              380.0,
+              140.0
+            ],
+            [
+              490.0,
+              140.0
+            ],
+            "",
+            8
+          ],
+          [
+            [
+              380.0,
+              70.0
+            ],
+            [
+              380.0,
+              140.0
+            ],
+            "",
+            8
           ]
         ],
         "rects": [
@@ -451,23 +554,15 @@
             80,
             40,
             "table",
-            64
+            8
           ],
           [
-            380,
-            70,
-            110,
-            70,
-            "bedstand",
-            64
-          ],
-          [
-            656,
-            328,
+            0,
+            0,
             48,
-            64,
+            48,
             "PLAYER_COLLIDER",
-            4
+            2
           ],
           [
             572,
@@ -475,7 +570,7 @@
             48,
             95,
             "bookshelf",
-            64
+            8
           ],
           [
             568,
@@ -483,7 +578,7 @@
             53,
             128,
             "rei_bedroom_closet",
-            64
+            8
           ],
           [
             1155,
@@ -491,7 +586,7 @@
             95,
             5,
             "rei_bedroom_door_enter",
-            64
+            8
           ]
         ]
       },
@@ -504,8 +599,8 @@
       "asset_data": {
         "filename": "sprites/sprites.png",
         "transform": {
-          "h": 720.0,
-          "w": 720.0,
+          "h": 512.0,
+          "w": 512.0,
           "x": 0.0,
           "y": 0.0
         },

@@ -2,7 +2,8 @@
 #define cwlib_cwl_error_handler_hpp
 
 #include "_cwincludes.h"
-
+#include <cstdarg>
+#include "../utils.hpp"
 
 struct cwError {
 	// Note: CW_NONE does NOT mean it won't send! Use CW_SILENT for that!!

@@ -39,6 +39,7 @@ int main(int argc, char **argv)
 	while (Window::WindowInstance->running) {
 		Window::WindowInstance->procEvent();
 		Window::WindowInstance->IdleFuncInternal();
+		Input::Keyboard::update();
 		Sleep(1);
 	}
 	for (unsigned int i = 0; i < Window::WindowInstance->workers.size(); i++) {

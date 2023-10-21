@@ -42,10 +42,6 @@ struct ABTDataStub : public nlohmann::json {
 	bool get_bool(std::string key) {
 		return this->contains(key) ? this->at(key).get < bool >() : false;
 	}
-	nlohmann::json get_compound(std::string key) {
-		return this->contains(key) ? this->at(key) : *this;
-	}
-
 	std::string get_or_default_string(std::string key, std::string m_default) {
 		return this->contains(key) ? this->at(key).get<std::string>() : m_default;
 	}
@@ -68,9 +64,6 @@ struct ABTDataStub : public nlohmann::json {
 	}
 	bool m_contains(std::string key) {
 		return this->contains(key);
-	}
-	void set_compound(std::string k, ABTDataStub v) {
-		(*this)[k] = (nlohmann::json)v;
 	}
 	void set_float(std::string k, float v) {
 		(*this)[k] = v;

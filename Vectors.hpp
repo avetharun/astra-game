@@ -6,6 +6,7 @@
 #include "LUA_INCLUDE.h"
 #include "utils.hpp"
 #include "imgui/imgui.h"
+#include <SDL2/SDL.h>
 //typedef int Vector;
 
 using json = nlohmann::json;
@@ -25,32 +26,6 @@ struct highp_ivec1_cw_impl {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(highp_ivec1_cw_impl, x);
 
 
-typedef double Vector;
-struct _Vector : highp_ivec1_cw_impl {
-	_Vector(auto _iv) {
-		this->x = _iv;
-	}
-	_Vector(int _iv) {
-		this->x = (_iv);
-	}
-	operator int() {
-		return (this->x);
-	}
-	friend std::ostream& operator<<(std::ostream& os, const _Vector& o)
-	{
-		os << o.x;
-		return os;
-	}
-	static int distance(_Vector first, _Vector second) {
-		return fabsl(second.x - first.x);
-	}
-	int lu_get() { return this->x; }
-	void lu_set(int _i) { this->x = _i; }
-	void lu_concat(lua_State * L) {
-		lua_concat(L, this->x);
-	}
-	_Vector* lu_new(int _i) { return new _Vector(_i); }
-};
 struct Vector2 {
 	static Vector2* lu_new(int x, int y) {
 		Vector2* _n = new Vector2();
@@ -58,18 +33,18 @@ struct Vector2 {
 		_n->y = y;
 		return _n;
 	}
-	Vector gx() { return this->x; }
-	Vector gy() { return this->y; }
-	Vector sx(int v = INT32_MAX) { this->x = v; return this->x; }
-	Vector sy(int v = INT32_MAX) { this->y = v; return this->y; }
+	double gx() { return this->x; }
+	double gy() { return this->y; }
+	double sx(int v = INT32_MAX) { this->x = v; return this->x; }
+	double sy(int v = INT32_MAX) { this->y = v; return this->y; }
 	Vector2* lu_get() { return this; }
-	Vector x = 0; 
-	Vector y = 0;
+	double x = 0; 
+	double y = 0;
 	Vector2() {}
 	Vector2(SDL_Rect r) {
 		x = r.x; y = r.y;
 	}
-	Vector2(Vector _x, Vector _y) {
+	Vector2(double _x, double _y) {
 		x = _x; y = _y;
 	}
 	Vector2 operator +=(Vector2 other) {
@@ -101,16 +76,16 @@ struct Vector2 {
 	Vector2 operator *(Vector2 other) {
 		return { x * other.x, y * other.y };
 	}
-	Vector2 operator -(Vector other) {
+	Vector2 operator -(double other) {
 		return { x - other, y - other };
 	}
-	Vector2 operator +(Vector other) {
+	Vector2 operator +(double other) {
 		return { x + other, y + other };
 	}
-	Vector2 operator /(Vector other) {
+	Vector2 operator /(double other) {
 		return { x / other, y / other };
 	}
-	Vector2 operator *(Vector other) {
+	Vector2 operator *(double other) {
 		return { x * other, y * other };
 	}
 	bool operator ==(const nullptr_t other) {
@@ -125,13 +100,13 @@ struct Vector2 {
 	bool operator < (Vector2 other) {
 		return (x < other.x && y < other.y) ? true : false;
 	}
-	bool operator ==(Vector other) {
+	bool operator ==(double other) {
 		return (x == other && y == other) ? true : false;
 	}
-	bool operator > (Vector other) {
+	bool operator > (double other) {
 		return (x > other && y > other) ? true : false;
 	}
-	bool operator < (Vector other) {
+	bool operator < (double other) {
 		return (x < other && y < other) ? true : false;
 	}
 	static Vector2 parse_angle(float angle) {
@@ -145,8 +120,8 @@ struct Vector2 {
 	static float parse_angle_vec(Vector2 v) {
 		return atan2f(v.y, v.x) * 180 / M_PI;
 	}
-	Vector luaL_getx() { return x; }
-	Vector luaL_gety() { return y; }
+	double luaL_getx() { return x; }
+	double luaL_gety() { return y; }
 	Vector2 luaL__add(Vector2 rhs) { return *this + rhs; }
 	Vector2 luaL__sub(Vector2 rhs) { return *this - rhs; }
 	Vector2 luaL__mul(Vector2 rhs) { return *this * rhs; }
@@ -176,7 +151,13 @@ struct Vector2 {
 	static Vector2 distance(Vector2 one, Vector2 two) {
 		return one - two;
 	}
-	Vector magnitude() { return sqrt((x * x) + (y * y)); }
+	static double distancef(Vector2 a, Vector2 b) {
+		return sqrtf(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+	}
+	static double distances(Vector2 a, Vector2 b) {
+		return pow(a.x - b.x, 2) + pow(a.y - b.y, 2);
+	}
+	double magnitude() { return sqrt((x * x) + (y * y)); }
 	Vector2 normalize() {
 		float mag = magnitude();
 		if (mag > 0.001f)
@@ -188,14 +169,8 @@ struct Vector2 {
 		return (lhs.x * rhs.y) - (lhs.y * rhs.x);
 	}
 	static double dot(Vector2 lhs, Vector2 rhs) { return lhs.x * rhs.x + lhs.y * rhs.y; }
-	static float angle(Vector2 lhs, Vector2 rhs) {
-		// sqrt(a) * sqrt(b) = sqrt(a * b) -- valid for real numbers
-		double denominator = (float)sqrt(lhs.magnitude() * rhs.magnitude());
-		if (denominator < 1e-15F)
-			return 0.0f;
-
-		double dot__ = alib_clamp(dot(lhs, rhs) / denominator, -1.0, 1.0);
-		return alib_rad2deg(acos(dot__));
+	static float angle(Vector2 a, Vector2 b) {
+		return alib_rad2deg(atan2(b.y - a.y, b.x - a.x));
 	}
 	Vector2 clamp_magnitude(double maxLength) {
 		double sqrmag = sqrt(this->magnitude());
@@ -226,10 +201,10 @@ Vector2 Vector2::right = Vector2{ 1,0 };
 Vector2 Vector2::down = Vector2{ 0,1 };
 Vector2 Vector2::left = Vector2{ -1,0 };
 struct VectorRect {
-	Vector x = 0;
-	Vector y = 0;
-	Vector w = 1;
-	Vector h = 1;
+	double x = 0;
+	double y = 0;
+	double w = 1;
+	double h = 1;
 	static SDL_Rect _emptyRect;
 
 	static VectorRect* lu_new(int x, int y, int w, int h) {
@@ -248,15 +223,15 @@ struct VectorRect {
 		_n->h = h;
 		return _n;
 	}
-	Vector sx(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->x; } this->x = v; return this->x; }
-	Vector sy(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->y; } this->y = v; return this->y; }
-	Vector sw(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->w; } this->w = v; return this->w; }
-	Vector sh(Vector v = INT32_MAX) { if (v == INT32_MAX) { return this->h; } this->h = v; return this->h; }
+	double sx(double v = INT32_MAX) { if (v == INT32_MAX) { return this->x; } this->x = v; return this->x; }
+	double sy(double v = INT32_MAX) { if (v == INT32_MAX) { return this->y; } this->y = v; return this->y; }
+	double sw(double v = INT32_MAX) { if (v == INT32_MAX) { return this->w; } this->w = v; return this->w; }
+	double sh(double v = INT32_MAX) { if (v == INT32_MAX) { return this->h; } this->h = v; return this->h; }
 
-	Vector gx() { return this->x; }
-	Vector gy() { return this->y; }
-	Vector gw() { return this->w; }
-	Vector gh() { return this->h; }
+	double gx() { return this->x; }
+	double gy() { return this->y; }
+	double gw() { return this->w; }
+	double gh() { return this->h; }
 	
 	Vector2 gsz() { return {this->w, this->h}; }
 	Vector2 gpos() { return { this->w, this->h }; }
@@ -368,11 +343,11 @@ struct VectorRect {
 };
 SDL_Rect VectorRect::_emptyRect = SDL_Rect{ 0, 0, 0, 0 };
 struct Vector3 {
-	Vector x = 0;
-	Vector y = 0;
-	Vector z = 0;
+	double x = 0;
+	double y = 0;
+	double z = 0;
 	Vector3() {}
-	Vector3(Vector _x, Vector _y, Vector _z) {
+	Vector3(double _x, double _y, double _z) {
 		x = _x;
 		y = _y;
 		z = _z;
@@ -394,6 +369,6 @@ struct Transform {
 	// scale in pixels! To set via a percentage, use Transform::recalcScale(&tr_t.scale, {amt_x, amt_y});
 	Vector2 scale = {0,0};
 	Vector2 origin = {0,0};
-	Vector angle = 0;
+	double angle = 0;
 };
 #endif

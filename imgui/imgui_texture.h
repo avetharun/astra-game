@@ -1,8 +1,11 @@
 #ifndef __htgnative_imgui_texture_h_impl__
 #define __htgnative_imgui_texture_h_impl__
 
+#include <GL/glew.h>
 #include "imgui.h"
 #include "imgui_format.h"
+#include <SDL2/SDL.h>
+//#include "../stb_image.h"
 namespace ImGui {
 	struct ImageTexture {
 		ImTextureID texid = 0;

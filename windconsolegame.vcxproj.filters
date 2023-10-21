@@ -54,9 +54,6 @@
     <ClInclude Include="e_colors.hpp">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="cw_lua_interp.hpp">
-      <Filter>engine</Filter>
-    </ClInclude>
     <ClInclude Include="lua.hpp">
       <Filter>engine</Filter>
     </ClInclude>
@@ -88,9 +85,6 @@
       <Filter>engine\renderer</Filter>
     </ClInclude>
     <ClInclude Include="renderer.hpp">
-      <Filter>engine\renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="guiRendererDefs.hpp">
       <Filter>engine\renderer</Filter>
     </ClInclude>
     <ClInclude Include="imgui\imconfig.h">
@@ -144,16 +138,13 @@
     <ClInclude Include="settings.h">
       <Filter>game</Filter>
     </ClInclude>
+    <ClInclude Include="cw_lua_interp.hpp">
+      <Filter>engine\cwlib</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
     <None Include="out\main.cwl">
-      <Filter>world</Filter>
-    </None>
-    <None Include="out\test.cwl">
-      <Filter>world</Filter>
-    </None>
-    <None Include="build\tra\test.lua">
       <Filter>world</Filter>
     </None>
     <None Include="out\lib\debug.lua">

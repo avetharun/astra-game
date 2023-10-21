@@ -15,19 +15,16 @@
 #include <functional>
 #include "renderer.hpp"
 #include "Audio.hpp"
-#undef main
 typedef char int8;
 typedef __int16 int16;
 typedef __int32 int32;
 typedef __int64 int64;
 #include<stdarg.h>
 #include <string.h> /* for strchr() */
-
+#include "lua.hpp"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_sdlrenderer.h"
-
-#include "cwlib/cwlib.hpp"
 #include "input.h"
 
 #include "global.h"
@@ -38,6 +35,8 @@ typedef __int64 int64;
 
 
 #include "GUIRenderer.h"
+#include <queue>
+#include "cwlib/cwlayout.hpp"
 struct Window {
 private:
 	SDL_Event sdlevent;
@@ -204,6 +203,7 @@ public:
 
 	CWLScene* scene;
 	struct Console {
+		std::queue<std::string> commandStack{};
 		char debugWindowInput[512]{};
 		ImGuiTextBuffer debugWindowConsoleText;
 		int m_scrollToBottom = false;
@@ -244,7 +244,8 @@ public:
 				if (_v[0] == '\0') {
 					return;
 				}
-				pushuf(_v); 
+
+				pushuf("\n" + std::string(_v));
 			} },
 			{"help", [&](const char* _v) {
 				if (_v[0] == '\0') {
@@ -292,6 +293,10 @@ public:
 		bool _isEnterPressed = ImGui::InputText("##consInput", cons.debugWindowInput, 512, ImGuiInputTextFlags_EnterReturnsTrue);
 		if (_isEnterPressed) {
 			std::string inputCommand(cons.debugWindowInput);
+			while (cons.commandStack.size() > 32) {
+				cons.commandStack.pop();
+			}
+			cons.commandStack.push(inputCommand);
 			// truncate command from args
 			std::string::size_type cmdend = inputCommand.find(' ');
 			if (cmdend != std::string::npos) {
@@ -317,20 +322,31 @@ public:
 	};
 
 	void RenderInternal() {
-		int s = alib_min(this->size.x, this->size.y);
-		int start_posx = (0.5f * this->size.x) - (s * 0.5f);
-		this->border_size_x = start_posx;
-		Camera::GetInstance()->m_Offset.x = start_posx;
+		float s = alib_min(this->size.x, this->size.y);
+		float start_posx = (0.5f * this->size.x);
 		Camera::GetInstance()->m_GlobalViewport = this->size;
+		Camera::GetInstance()->m_Viewport = this->size;
+		this->border_size_x = start_posx;
 		BatchRenderer().Render();
 		PostPreRender();
+
+		if (scene) {
+			for (int i = 0u; i < scene->scene_placed_items.size(); i++) {
+				scene->scene_placed_items.at(i)->Update();
+			}
+		}
 		if (scene && getbitv(data, 2/*overlay*/) && scene->ui_img_elem_assets.contains("overlay")) {
+			UI::ImageElement * OVERLAY = scene->ui_img_elem_assets["overlay"];
 			Camera::GetInstance()->culling = true;
-			SDL_SetRenderDrawColor(SDL_REND, 0, 0, 0, 255);
-			const SDL_Rect lb = SDL_Rect(0, 0, start_posx, this->size.y);
-			const SDL_Rect rb = SDL_Rect(this->size.x - (this->scene->ui_img_elem_assets.at("overlay")->transform.scale.x * 0.5f), 0, this->size.x, this->size.y);
-			SDL_RenderFillRect(SDL_REND, &lb);
-			SDL_RenderFillRect(SDL_REND, &rb);
+			// left top
+			ImGui::GetBackgroundDrawList()->AddRectFilled({ 0.0,0.0 }, { (float)OVERLAY->_dst.x, (float)this->size.y }, ImRGB(0,0,0), 0);
+			ImGui::GetBackgroundDrawList()->AddRectFilled({ 0.0,0.0 }, { (float)this->size.x, (float)OVERLAY->_dst.y}, ImRGB(0, 0, 0), 0);
+			// right bottom
+			ImGui::GetBackgroundDrawList()->AddRectFilled({ (float)OVERLAY->_dst.x + (float)OVERLAY->_dst.w,0.0 }, { (float)this->size.x, (float)this->size.y }, ImRGB(0, 0, 0), 0);
+
+			ImGui::GetBackgroundDrawList()->AddRectFilled({ 0.0,(float) (OVERLAY->_dst.y + OVERLAY->_dst.h)}, {(float)this->size.x, (float)this->size.y}, ImRGB(0, 0, 0), 0);
+
+
 		}
 		else {
 			Camera::GetInstance()->culling = false;
@@ -363,8 +379,6 @@ public:
 					if (currect == noderect) {
 						continue;
 					}
-					std::string k = currect->id;
-					std::string v = noderect->id;
 					SDL_Rect r2 = RectCollider2d::recalc(*noderect);
 
 					if (SDL_HasIntersection(&r1, &r2) && !getbitv(this->data, 8)) {
@@ -381,10 +395,21 @@ public:
 		mouse.m1df = mouse.m2df = mouse.m3df = mouse.mt1df = mouse.mt2df = false;
 		while (SDL_PollEvent(&sdlevent))
 		{
-			ImGui_ImplSDL2_ProcessEvent(&sdlevent);
 			Camera* i = Camera::GetInstance();
 			switch (sdlevent.type)
 			{
+
+			case SDL_KEYDOWN:
+				Input::Keyboard::EmulateKeyboardDown(sdlevent.key.keysym.scancode, sdlevent);
+				if (!Input::Keyboard::keys_frame_last[sdlevent.key.keysym.scancode]) {
+					Input::Keyboard::keys_frame[sdlevent.key.keysym.scancode] = true;
+				}
+				break;
+			case SDL_KEYUP:
+				Input::Keyboard::EmulateKeyboardUp(sdlevent.key.keysym.scancode, sdlevent);
+				Input::Keyboard::keys_frame[sdlevent.key.keysym.scancode] = false;
+				break;
+
 			default: break;
 			case SDL_MOUSEBUTTONUP: {
 				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_LEFT)) {
@@ -402,6 +427,7 @@ public:
 				if (sdlevent.button.button & SDL_BUTTON(SDL_BUTTON_X2)) {
 					mouse.mt2d = false;
 				}
+				break;
 			}
 			case SDL_MOUSEBUTTONDOWN: {
 				if (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
@@ -435,10 +461,12 @@ public:
 					mouse.mt2d = true;
 				}
 				mouse.onClick(mouse.x, mouse.y, mouse.m1d, mouse.m2d, mouse.m3d, mouse.mt1d, mouse.mt2d);
+				break;
 			} break;
 			case SDL_MOUSEWHEEL: {
 				mouse.sy = sdlevent.wheel.y; 
 				mouse.onScroll(mouse.sd);
+				break;
 			}
 			case SDL_MOUSEMOTION: {
 				SDL_GetMouseState(&mouse.x, &mouse.y);
@@ -468,30 +496,20 @@ public:
 				this->OnFocus();
 				this->hasFocus = true;
 				break;
-			case SDL_KEYDOWN:
-				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_INPUT_FOCUS) {
-					keyboard.EmulateKeyboardDown(sdlevent.key.keysym.scancode, sdlevent);
-				}
-				break;
-			case SDL_KEYUP:
-				if (SDL_GetWindowFlags(SDL_WIND) & SDL_WINDOW_INPUT_FOCUS) {
-					keyboard.EmulateKeyboardUp(sdlevent.key.keysym.scancode, sdlevent);
-				}
-				break;
-
 
 			case SDL_QUIT:
 				running = false;
 				break;
 			}
+			ImGui_ImplSDL2_ProcessEvent(&sdlevent);
 		}
+		
 	}
 
 
 	int m_dx, m_dy{ 0 };
 	float m_ds = 0;
 	void IdleFuncInternal() {
-
 
 		ImGui_ImplSDLRenderer_NewFrame();
 		ImGui_ImplSDL2_NewFrame(Window::WindowInstance->SDL_WIND);
@@ -547,12 +565,6 @@ public:
 		Time::DeltaTimeUnscaled = (double)ImGui::GetIO().DeltaTime * 1000;
 		Time::DeltaTime = Time::DeltaTimeUnscaled * Time::DeltaTimeScale;
 		Time::fps = ImGui::GetIO().Framerate;
-		for (int i = 0; i < 1024; i++) {
-			if (keyboard.key_frame[i]) {
-				keyboard.key_frame[i] = false;
-				continue;
-			}
-		}
 
 	}
 	void AddComponent(Component* c) {

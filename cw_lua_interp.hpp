@@ -6,7 +6,6 @@
 
 #include "settings.h"
 #include <random>
-lua_State* state = luaL_newstate(); // create and init lua
 #include "engine.hpp"
 #include "renderer.hpp"
 #include "Vectors.hpp"
@@ -29,6 +28,7 @@ void deleteGlobalLua(lua_State* state, const char* name) {
 	lua_setglobal(state, name);
 }
 struct lu_SDL_Window_impl {
+	bool wantsShowCursor = true;
 	static inline SDL_Window* __win{};
 	static inline SDL_Renderer* __rend{};
 	std::string __name = "Unnamed Game";
@@ -40,8 +40,11 @@ struct lu_SDL_Window_impl {
 	bool is_interaction_open = false;
 	std::unordered_map<std::string, luabridge::LuaRef> events;
 	std::vector < std::pair<std::pair<double, double>, luabridge::LuaRef>> asyncTasks = {};
-	Sprite* player_sprite;
+	std::unordered_map<std::string, int> conds;
+	Sprite* player_sprite;;
 	void Update() {
+
+		//SDL_ShowCursor(wantsShowCursor? SDL_ENABLE : SDL_DISABLE);
 		SDL_SetWindowTitle(__win, __name.c_str());
 		Window::WindowInstance->debug = this->debug;
 		Window::WindowInstance->debug_window_open = this->debug_window_open;
@@ -53,6 +56,24 @@ struct lu_SDL_Window_impl {
 	static inline lu_SDL_Window_impl* __INSTANCE = nullptr;
 };
 
+int __calc_uv_pair(int from, int base, int amt) {
+	if (from == 0) { return base * amt; }
+	if (amt == 0) { return from; }
+	return from + ((base * (amt)) - base);
+}
+void lu_cw_set_overlay_tile(int x_tile, int y_tile) {
+	Win->scene->ui_img_elem_assets.at("overlay")->uv.x = x_tile;
+	Win->scene->ui_img_elem_assets.at("overlay")->uv.y = y_tile;
+}
+void lu_cw_addcond(std::string name, int data) {
+	lu_SDL_Window_impl::__INSTANCE->conds.insert(std::make_pair(name, data));
+}
+int lu_cw_getcond(std::string name) {
+	if (!lu_SDL_Window_impl::__INSTANCE->conds.contains(name)) {
+		return 0;
+	}
+	return lu_SDL_Window_impl::__INSTANCE->conds.at(name);
+}
 void lu_cw_register_event(std::string name, luabridge::LuaRef f) {
 	if (!f.isFunction()) {
 		cwError::push(cwError::CW_ERROR);
@@ -296,7 +317,7 @@ luabridge::LuaRef __lu_on_click = 0;
 luabridge::LuaRef __lu_on_keypress = 0;
 luabridge::LuaRef __lu_on_keyrelease = 0;
 luabridge::LuaRef __lu_on_keyhold = 0;
-void lu_do_on(const std::string& do_s, luabridge::LuaRef __func) {
+inline void lu_do_on(const std::string& do_s, luabridge::LuaRef __func) {
 	if (!__func.isFunction()) {
 		luaL_error(state, "function not found");
 	}
@@ -351,12 +372,11 @@ std::vector<std::function<void()>> __renderTasks;
 
 RectCollider2d* lu_new_froms(Sprite* sprite, int __layer) {
 	RectCollider2d* r_re = new RectCollider2d();
-	r_re->rect = sprite->rect;
+	r_re->rect = &sprite->rect;
 	r_re->recalc();
 	r_re->layer = __layer;
 	return r_re;
 }
-
 Vector2 lu_cw_get_cursor_pos() { return {(double)Window::WindowInstance->mouse.x, (double)Window::WindowInstance->mouse.y }; }
 Vector2 lu_cw_get_cursor_delta() { return { (double)Window::WindowInstance->mouse.dx, (double)Window::WindowInstance->mouse.dy }; }
 bool lu_cw_get_mouse_ld() { return Window::WindowInstance->mouse.m1d; }
@@ -364,8 +384,7 @@ bool lu_cw_get_mouse_md() { return Window::WindowInstance->mouse.m2d; }
 bool lu_cw_get_mouse_rd() { return Window::WindowInstance->mouse.m3d; }
 bool lu_cw_get_mouse_t1d() { return Window::WindowInstance->mouse.mt1d; }
 bool lu_cw_get_mouse_t2d() { return Window::WindowInstance->mouse.mt2d; }
-Vector lu_cw_vector__get(Vector const& _v) { return _v; }
-void lu_cw_vector__set(Vector & _vec, double _vec_val) { _vec = _vec_val; }
+
 double lu_get_dt_scaled() { return *_lu_deltaTime; }
 double lu_get_dt_scale_val() { return *_lu_deltaTimeSCALE; }
 double lu_get_dt_unscaled() { return *_lu_deltaTimeUS; }
@@ -385,8 +404,108 @@ UI::GameOptionsBox* lu_new_optionsbox_WITHALIGNMENT(std::string title, ABTDataSt
 }
 
 
+CWItem* lu_cw_get_item(std::string id) {
+	for (int i = 0; i < Window::WindowInstance->scene->scene_placed_items.size(); i++) {
+		CWItem* m_i = Window::WindowInstance->scene->scene_placed_items.at(i);
+		if (m_i->data.get_string("id") == id) {
+			return m_i;
+		}
+	}
+	return nullptr;
+}
+bool has_modified_item = false;
+inline void lu_cw_render_player_inventory(CWInventory* inv) {
+	if (inv) {
+		int columns = 9;
+		int rows = ceil(inv->INVENTORY_MAX / 9);
+		if (inv->INVENTORY_MAX < 9 || rows == 0) {
+			rows = 1;
+			columns = inv->INVENTORY_MAX;
+		}
+		float padding = 8;
+		int i = 0;
+		int SIZE = 48;
+		float m_ElemWidth = SIZE + padding;
+		float size_x = columns * (SIZE + padding);
+		float size_y = rows * (SIZE + padding);
+		ImGuiIO& io = ImGui::GetIO();
+		float w_pos_x = (io.DisplaySize.x * 0.5f) - (size_x * 0.5f);
+		float w_pos_y = (io.DisplaySize.y * 0.5f) - (size_y * 0.5f);
+		ImGui::SetNextWindowPos({ w_pos_x, w_pos_y });
+		ImGui::SetNextWindowSize({ size_x, size_y });
+		ImGui::Begin("###m_MGUIInv", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+		ImVec2 p = ImGui::GetWindowPos();
+		ImVec2 tsz = ImGui::CalcTextSize(inv->title.c_str());
+		ImVec2 textPos = { p.x, p.y - tsz.y };
+		ImGui::PushStyleColor(ImGuiCol_Text, ImRGB(0, 0, 0, 128));
+		ImGui::TextForeground(inv->title, { textPos.x + 1, textPos.y + 1 });
+		ImGui::TextForeground(inv->title, { textPos.x + 2, textPos.y + 2 });
+		ImGui::PopStyleColor();
+		ImGui::TextForeground(inv->title, { textPos.x, textPos.y });
 
-alib_inline_run _nn([&]() {
+		CWItem* m_item = nullptr;
+		for (int y = 0; y < rows && i < inv->INVENTORY_MAX; y++) {
+			for (int x = 0; x < columns && i < inv->INVENTORY_MAX; x++) {
+				float stx = ((SIZE + padding) * x) + w_pos_x + (padding * 0.5f);
+				float sty = ((SIZE + padding) * y) + w_pos_y + (padding * 0.5f);
+				ImColor bgc = { 128,128,128,32 };
+				ImColor bdc = { 128,128,128,32 };
+				ImGui::RectFilled({ stx, sty }, { (float)SIZE, (float)SIZE }, bgc, 4);
+				ImGui::RectUnfilled({ stx, sty }, { (float)SIZE, (float)SIZE }, bgc, 4, 1);
+
+				ImRect R = { stx, sty, (float)SIZE + stx, (float)SIZE + sty };
+				if (m_item = inv->GetItemInSlot(i)) {
+					m_item->ItemSprite->Update();
+					float iw = m_item->ItemSprite->surf->w;
+					float ih = m_item->ItemSprite->surf->h;
+					float sx = ((m_ElemWidth)*x) + w_pos_x + padding * 1.5f;
+					float sy = ((m_ElemWidth)*y) + w_pos_y + padding * 1.5f;
+					float ux = (float)m_item->ItemSprite->uv_final.x;
+					float uy = (float)m_item->ItemSprite->uv_final.y;
+					float uw = (float)m_item->ItemSprite->uv_final.w;
+					float uh = (float)m_item->ItemSprite->uv_final.h;
+					float rx = 0;
+					float ry = 0;
+					if (uw > uh) {
+						rx = (padding - SIZE) - padding;
+						ry = (padding - SIZE * uh / uw) - padding;
+					}
+					else {
+						rx = (SIZE * uw / uh) - padding;
+						ry = (SIZE)-padding;
+					}
+					ImVec2 uv0 = ImVec2(ux / iw, uy / ih);
+					ImVec2 uv1 = ImVec2((ux + uw) / iw, (uy + uh) / ih);
+					alib_clampptr(&m_item->GUIScale, 0.f, 1.f);
+					ImGui::IMImagePositioned(m_item->ItemSprite->m_ImTex, { sx,sy }, { rx * m_item->GUIScale, ry * m_item->GUIScale }, uv0, uv1);
+					if (ImGui::IsMouseHoveringRect(R.Min, R.Max, false)) {
+						if (!ImGui::IsMouseClicked(ImGuiButtonFlags_MouseButtonLeft)) {
+							std::string m_nt = m_item->data.get_string("name");
+							std::string m_tt = " " + m_item->data.get_string("tooltip") + '\t';
+							ImVec2 m_title = ImGui::CalcTextSize(m_nt.c_str());
+							ImVec2 m_tooltip = ImGui::CalcTextSize(m_tt.c_str());
+							ImVec2 m_CursorPos = { io.MousePos.x + 16, io.MousePos.y };
+							ImVec2 m_size = { alib_max(m_title.x, m_tooltip.x), m_title.y + m_tooltip.y + (padding * 2) };
+							ImGui::ForegroundRectFilled(m_CursorPos, m_size, bgc, 4);
+							ImGui::ForegroundRectUnfilled(m_CursorPos, m_size, bdc, 4, 1);
+							ImGui::PushStyleColor(ImGuiCol_Text, ImRGB(0, 0, 0, 128));
+							ImGui::IMTextForeground(alib_strfmt("%s\n %s", m_nt.c_str(), m_tt.c_str()), { m_CursorPos.x + 1,m_CursorPos.y + 1 });
+							ImGui::IMTextForeground(alib_strfmt("%s\n %s", m_nt.c_str(), m_tt.c_str()), { m_CursorPos.x + 2,m_CursorPos.y + 2 });
+							ImGui::PopStyleColor();
+							ImGui::IMTextForeground(alib_strfmt("%s\n %s", m_nt.c_str(), m_tt.c_str()), m_CursorPos);
+						}
+						else {
+							m_item->OnClick();
+						}
+					}
+				}
+				i++;
+			}
+		}
+		ImGui::End();
+	}
+}
+inline void defineLuaImpl() {
 	__lu_component_impl.Start = &lu_cw_start_func_impl;
 	__lu_component_impl.Update = &lu_cw____update_func_impl;
 	__lu_component_impl.PreUpdate = &lu_cw_preupdate_func_impl;
@@ -402,33 +521,35 @@ alib_inline_run _nn([&]() {
 		.addFunction("save", &CWSettings::Save)
 		.addFunction("load", &CWSettings::Parse)
 		.beginNamespace("rendering")
-			.addVariable("always_show_borders", &CWSettings::Rendering::ALWAYS_SHOW_BORDERS)
+		.addVariable("always_show_borders", &CWSettings::Rendering::ALWAYS_SHOW_BORDERS)
 		.endNamespace()
 		.beginNamespace("keybinds")
-			.addVariable("use", &CWSettings::KeyBinds::USE, false)
-			.addVariable("up", &CWSettings::KeyBinds::UP, false)
-			.addVariable("down", &CWSettings::KeyBinds::DOWN, false)
-			.addVariable("left", &CWSettings::KeyBinds::LEFT, false)
-			.addVariable("right", &CWSettings::KeyBinds::RIGHT, false)
-			.addVariable("pause", &CWSettings::KeyBinds::PAUSE, false)
-			.addVariable("inventory", &CWSettings::KeyBinds::INVENTORY, false)
+		.addVariable("use", &CWSettings::KeyBinds::USE, false)
+		.addVariable("up", &CWSettings::KeyBinds::UP, false)
+		.addVariable("down", &CWSettings::KeyBinds::DOWN, false)
+		.addVariable("left", &CWSettings::KeyBinds::LEFT, false)
+		.addVariable("right", &CWSettings::KeyBinds::RIGHT, false)
+		.addVariable("pause", &CWSettings::KeyBinds::PAUSE, false)
+		.addVariable("inventory", &CWSettings::KeyBinds::INVENTORY, false)
 		.endNamespace()
-	.endNamespace();
+		.endNamespace();
 	alu_global.beginNamespace("input")
 		.addFunction("key_pressed", &lu_cw_keypressedf)
 		.addFunction("key_up", &lu_cw_keyupf)
 		.addFunction("key_down", &lu_cw_keydownf)
 		.addFunction("keys_down", lu_cw_keys_down)
 		.addFunction("keys_up", lu_cw_keys_up)
+		.addFunction("getKeyName", &Input::GetKeyName)
+		.addFunction("getKeyNameFriendly", &Input::GetKeyNameFriendly)
 		.beginNamespace("mouse")
-			.addProperty("position", &lu_cw_get_cursor_pos)
-			.addProperty("delta", &lu_cw_get_cursor_delta)
-			.addProperty("left", &lu_cw_get_mouse_ld)
-			.addProperty("right", &lu_cw_get_mouse_rd)
-			.addProperty("middle", &lu_cw_get_mouse_md)
+		.addProperty("position", &lu_cw_get_cursor_pos)
+		.addProperty("delta", &lu_cw_get_cursor_delta)
+		.addProperty("left", &lu_cw_get_mouse_ld)
+		.addProperty("right", &lu_cw_get_mouse_rd)
+		.addProperty("middle", &lu_cw_get_mouse_md)
 		.endNamespace()
-	.endNamespace();
-	
+		.endNamespace();
+
 	setGlobalLuaNum(state, "c_empty", COL_EMPTY);
 	setGlobalLuaNum(state, "c_player", COL_PLAYER);
 	setGlobalLuaNum(state, "c_entity", COL_ENT);
@@ -441,7 +562,28 @@ alib_inline_run _nn([&]() {
 	setGlobalLuaNum(state, "COL_OBJECT", COL_OBJ);
 	setGlobalLuaNum(state, "COL_TRIGGER", COL_TRG);
 	setGlobalLuaNum(state, "COL_SOLID", COL_SOLID);
-	
+	alu_global.beginClass<CWItem>("CWItem")
+		.addData("data", &CWItem::data)
+		.addData("sprite", &CWItem::ItemSprite)
+		.addData("can_be_used", &CWItem::can_be_used)
+		.addData("can_be_dropped", &CWItem::can_be_dropped)
+		.addData("can_be_equipped", &CWItem::can_be_equipped)
+		.addFunction("set_on_click", &CWItem::set_click_func)
+		.addFunction("isInWorld", &CWItem::isInWorld)
+		.addFunction("move", &CWItem::SendToInventory)
+		.endClass();
+	alu_global.beginClass<CWInventory>("CWInventory")
+		.addConstructor<CWInventory(*)(std::string)>()
+		.addData("title", &CWInventory::title)
+		.addData("max_items", &CWInventory::INVENTORY_MAX)
+		.addFunction("drop", &CWInventory::DropItemInSlot)
+		.addFunction("getSlotOfID", &CWInventory::GetSlotOfItemByID)
+		.addFunction("getItemInSlot", &CWInventory::GetItemInSlot)
+		.addFunction("setItemInSlot", &CWInventory::SetItemInSlot)
+		.addFunction("containsID", &CWInventory::containsItemID)
+		.addStaticFunction("assign", &CWInventory::setGlobalInventory)
+		.addStaticFunction("getinventory", &CWInventory::getInventoryByID)
+		.endClass();
 	alu_global.beginClass<ABTDataStub>("ABT")
 		.addFunction("setFloat", &ABTDataStub::set_float)
 		.addFunction("addFloat", &ABTDataStub::add_float)
@@ -461,7 +603,7 @@ alib_inline_run _nn([&]() {
 		.addFunction("serialize", &ABTDataStub::serialize_json)
 		.addFunction("deserialize", &ABTDataStub::deserialize_json)
 		.addConstructor<ABTDataStub(*)()>()
-	.endClass();
+		.endClass();
 
 	alu_global.beginClass<lu_SDL_Window_impl>("WindowImpl")
 		.addData("name", &lu_SDL_Window_impl::__name)
@@ -470,7 +612,8 @@ alib_inline_run _nn([&]() {
 		.addData("debug_window_active", &lu_SDL_Window_impl::debug_window_active, false)
 		.addData("is_editor", &lu_SDL_Window_impl::is_editor, false)
 		.addData("noclip", &lu_SDL_Window_impl::noclip)
-	.endClass();
+		.addData("cursor_show", &lu_SDL_Window_impl::wantsShowCursor)
+		.endClass();
 	alu_global.beginClass<Vector2>("Vector2")
 		.addStaticFunction("new", &Vector2::lu_new) // ctor
 		.addConstructor<Vector2(*)(int, int)>()
@@ -495,7 +638,7 @@ alib_inline_run _nn([&]() {
 		.addFunction("__eq", &Vector2::luaL__eq)
 		.addFunction("__lt", &Vector2::luaL__lt)
 		.addFunction("__le", &Vector2::luaL__le)
-	.endClass();
+		.endClass();
 	alu_global.beginClass<MeshLine>("Line")
 		.addConstructor<void(*)(double, double, double, double)>()
 		.addConstructor<void(*)(Vector2, Vector2)>()
@@ -522,17 +665,20 @@ alib_inline_run _nn([&]() {
 		.addData("w", &SDL_Rect::w)
 		.addData("h", &SDL_Rect::h)
 		.addConstructor<SDL_Rect* (*)(int, int, int, int)>()
-	.endClass();
+		.endClass();
 
 	alu_global.beginNamespace("cdecl")
 		.addConstant("NDEBUG", NDEBUG)
-	.endNamespace();
+		.beginClass < std::function<void()>>("std_function_void_0a")
+		.addFunction("call", &std::function<void()>::operator())
+		.endClass()
+		.endNamespace();
 	alu_global.beginClass<Transform>("Transform")
 		.addData("angle", &Transform::angle)
 		.addData("origin", &Transform::origin)
 		.addData("position", &Transform::position)
 		.addData("scale", &Transform::scale)
-	.endClass();
+		.endClass();
 	alu_global.beginClass<SpriteAnimationMeta>("SpriteMeta")
 		.addConstructor<SpriteAnimationMeta(*)(int, float)>()
 		.addData("animate", &SpriteAnimationMeta::animate)
@@ -540,7 +686,9 @@ alib_inline_run _nn([&]() {
 		.addData("resets", &SpriteAnimationMeta::reset_after_once)
 		.addData("frame", &SpriteAnimationMeta::CURRENT_FRAME)
 		.addData("delay", &SpriteAnimationMeta::delay)
+		.addFunction("set_on_loop", &SpriteAnimationMeta::set_loop_func)
 		.endClass();
+
 	alu_global.beginClass<Sprite>("Sprite")
 		.addStaticFunction("new", Sprite::luaNew)
 		.addConstructor<Sprite(*)(const char*)>()
@@ -549,260 +697,273 @@ alib_inline_run _nn([&]() {
 		.addData("centered", &Sprite::center)
 		.addData("enabled", &Sprite::enabled)
 		.addData("name", &Sprite::name)
-		.addProperty("id", 
+		.addProperty("id",
 			std::function <std::string(const Sprite*)>([](const Sprite* s) {
 				return s->identifier;
-			}),
+				}),
 			std::function <void(Sprite*, std::string)>([](Sprite* s, std::string id) {
 				s->setID(id);
-			})
-		)
-		.addData("is_rendering", &Sprite::isRendering)
-		.addData("center_position", &Sprite::center_position)
-		.addData("layer", &Sprite::layer)
-		.addData("uv", &Sprite::uv)
-		.addData("transform", &Sprite::transform)
-		.addData("tile", &Sprite::uv_tile)
-		.addData("uv_final", &Sprite::uv_final, false)
-		.addFunction("set_uv", &Sprite::lua_set_uv)
-		.addFunction("lock", &Sprite::lockCamera)
-		.addFunction("unlock", &Sprite::unlockCamera)
-		.addFunction("update", &Sprite::Update)
-		.addData("pixel_sz", &Sprite::pixel_size, false)
-	.endClass();
-	
-	alu_global.beginNamespace("cw")
-		.addFunction("load", &lu_cw_loadScene)
-		.addFunction("unload", &lu_cw_unloadScene)
-		.addFunction("reload", &lu_cw_reloadScene)
-		.addFunction("add_start", &lu_cw_add_start)
-		.addFunction("add_pre_update", &lu_cw_add_preu)
-		.addFunction("add_update", &lu_cw_add_update)
-		.addFunction("add_post_update", &lu_cw_add_postu)
-		.addFunction("add_pre_render", &lu_cw_add_prer)
-		.addFunction("delete_pre_render", &lu_cw_del_prer)
-		.addFunction("add_render_task", &lu_cw_add_render)
-		.addFunction("delete_render_task", &lu_cw_del_render)
-		.addFunction("delete_start", &lu_cw_del_start)
-		.addFunction("delete_pre_update", &lu_cw_del_preu)
-		.addFunction("delete_update", &lu_cw_del_update)
-		.addFunction("delete_post_update", &lu_cw_del_postu)
-		.addFunction("get_window", &lu_cw_get_window)
-		.addFunction("run_async", std::function<void(double, luabridge::LuaRef)>([](double delay, luabridge::LuaRef func) {
-			if (!func.isFunction()) {
-				cwError::push(cwError::CW_ERROR);
-				std::string t_name = lua_typename(state, func.type());
-				cwError::serrof("Unable to register async event : Event needs to be a function. Got %s", t_name.c_str());
-				cwError::pop();
-				return;
-			}
-			lu_cw_get_window()->asyncTasks.push_back(std::make_pair(std::make_pair(0, delay), func));
-		}))
-		.addFunction("set_overlay_enabled", std::function<void(bool)>([](bool s) {
-				setbitv(Window::WindowInstance->data, 2, s);
-			}))
-		.addFunction("on", &lu_do_on)
-		.addFunction("re", &lu_cw_register_event)
-		.addFunction("ue", &lu_cw_unregister_event)
-		.addFunction("ce", std::function<void(std::string)>([](std::string name) {
-		std::unordered_map<std::string, luabridge::LuaRef> events = lu_SDL_Window_impl::__INSTANCE->events;
-			if (events.contains(name)) {
-				events.at(name)();
-			}
-		}))
-		.addFunction("add_interaction", &lu_cw_add_on_interact)
-		.addFunction("delete_interaction", &lu_cw_del_on_interact)
-		.addFunction("add_collision", &lu_cw_add_on_collide)
-		.addFunction("delete_collision", &lu_cw_del_on_collide)
-		.addFunction("get_sprite", &Sprite::getElementByID)
-		.addFunction("get_particle", &ParticleEffect::getElementByID)
-		.addFunction("associate_player", std::function<void(Sprite*)>([](Sprite* s) {
-				lu_cw_get_window()->player_sprite = s;
-			}))
-		.addFunction("get_player", std::function<Sprite*()>([]() {
-				return lu_cw_get_window()->player_sprite;
-			}))
-		.addVariable("is_interacting", &UI::GameTextBox::isInteracting)
-		.addFunction("m_runInteraction", std::function <bool(std::string)>([](std::string id) -> bool{
-
-			if (UI::GameTextBox::isInteracting) {
-				return false;
-			}
-			printf("id:'%s'\n", id.c_str());
-			if (!__lu_on_interact_funcs.contains(id)) { return false; }
-			__lu_on_interact_funcs.at(id)();
-			return true;
-		}))
-		.beginNamespace("Camera")
-			.addProperty("position", Camera::lu_GetPosition, Camera::lu_SetPosition)
-			.addFunction("target", Camera::lu_SetTarget)
-			.addProperty("zoom", Camera::lu_GetScale, Camera::lu_SetScale)
-		.endNamespace()
-	.endNamespace();
-
-	alu_global.beginNamespace("Time")
-		.addProperty("DeltaTime", &lu_get_dt_scaled)
-		.addVariable("DeltaTimeUnscaled", &Time::DeltaTimeUnscaled, false)
-		.addVariable("fps", &Time::fps, false)
-		.addProperty("DeltaTimeScale", &lu_get_dt_scale_val)
-		.beginClass<Time::Timer>("Timer")
-			.addConstructor<Time::Timer(*)()>()
-			.addData("elapsed", &Time::Timer::elapsed, false)
-			.addFunction("start", &Time::Timer::Start)
-			.addFunction("end", &Time::Timer::End)
-		.endClass()
-	.endNamespace();
-	alu_global.beginNamespace("console")
-		.addFunction("log", &lu_logmsg)
-		.addFunction("error", &lu_logerr)
-		.addFunction("warn", &lu_logwrn)
-		.addFunction("debug", &lu_logdeb)
-		.addFunction("cout", &lu_logsil)
-	.endNamespace();
-	alu_global
-		.addFunction("print", &lu_logsil) // Override print, and have it print to the debug console.
-	;
-	alu_global.beginClass<RectCollider2d>("RectCollider")
-		.addStaticFunction("new", &RectCollider2d::lu_new_fromi)
-		.addStaticFunction("new_centered", &RectCollider2d::lu_new_fromic)
-		.addStaticFunction("from_rect", &RectCollider2d::lu_new_fromr)
-		.addStaticFunction("from_sprite", &lu_new_froms)
-		.addData("layer", &RectCollider2d::layer)
-		.addProperty("id",
-			std::function <std::string(const RectCollider2d*)>([](const RectCollider2d* s) {
-				return s->id;
-				}),
-			std::function <void(RectCollider2d*, std::string)>([](RectCollider2d* s, std::string id) {
-					s->id = id;
 				})
 		)
-		.addProperty("x",
-			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->x; }),
-			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->x = v; })
-			)
-		.addProperty("y",
-			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->y; }),
-			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->y = v; })
-		)
-		.addProperty("w",
-			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->w; }),
-			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->w = v; })
-		)
-		.addProperty("h",
-			std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->h; }),
-			std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->h = v; })
-		)
-		.addStaticFunction("dump_debug", &RectCollider2d::dump_debug)
-	.endClass();
-	// I despise programming like this
-	alu_global.beginNamespace("Raycast")
-		.addFunction("line", &Collider::Raycast::Test) // Raycast and check for specific type of collider
-		.addFunction("circle", &Collider::Raycast::TestCircle)
-		.addFunction("cone", &Collider::Raycast::TestCone)
-		.addFunction("any_line", &Collider::Raycast::TestAnyLine)
-		.addFunction("any_circle", &Collider::Raycast::TestAnyCircle)
-		.addFunction("any_cone", &Collider::Raycast::TestAnyCone)
-		.addFunction("any_line_except", &Collider::Raycast::TestExcept)
-		.addFunction("any_circle_except", &Collider::Raycast::TestCircleExcept)
-		.addFunction("any_cone_except", &Collider::Raycast::TestConeExcept)
-	.endNamespace();
-	alu_global.beginNamespace("RaycastHit")
-		.addVariable("start", &Collider::Hit::start, false)
-		.addVariable("end", &Collider::Hit::end, false)
-		.addVariable("length", &Collider::Hit::length, false)
-		.addVariable("pos", &Collider::Hit::pos, false)
-		.addVariable("hasHit", &Collider::Hit::hasHit, false)
-		.addVariable("layer", &Collider::Hit::layer, false)
-		.addVariable("id", &Collider::Hit::col_id, false)
-	.endNamespace();
-	alu_global.beginClass<ParticleEffects::stub>("ParticleEffectType")
-		.addData("meta", &ParticleEffects::stub::meta)
-		.addData("uv", &ParticleEffects::stub::uv)
-		.addData("id", &ParticleEffects::stub::id)
-		.addStaticData("RAIN", &ParticleEffects::RAIN, false)
-		.addStaticData("BLOOD", &ParticleEffects::BLOOD, false)
-		.addStaticData("SNOW", &ParticleEffects::SNOW, false)
-		.addStaticData("FLAME", &ParticleEffects::FLAME, false)
-	.endClass();
-	alu_global.beginClass<ParticleEffect>("Particle")
-		.addConstructor<ParticleEffect*(*)(ParticleEffects::stub, int)>()
-		.addData("uv", &ParticleEffect::m_uv)
-		.addProperty("direction",
-			std::function<float(const ParticleEffect*)>([](const ParticleEffect* e) {return alib_rad2deg(e->m_dir_angle_rad); }),
-			std::function<void(ParticleEffect*, float)>([](ParticleEffect* e,float a) {
-				e->m_dir_angle_rad = alib_deg2rad(a);
-			}))
-		.addData("layer", &ParticleEffect::m_layer)
-		.addData("lifetime", &ParticleEffect::m_lifetime)
-		.addData("pos", &ParticleEffect::start_pos)
-		.addData("randomness", &ParticleEffect::m_randomness)
-		.addFunction("add", &ParticleEffect::append)
-		.addFunction("remove", &ParticleEffect::pop)
-	.endClass();
-	alu_global.beginNamespace("math")
-		.addFunction("lerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
-			return (start + (end - start) * percent);
-		}))
-		.addFunction("clerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
-			return alib_clamp((start + (end - start) * percent), start, end);
-		}))
-	.endNamespace();
-	alu_global.beginClass<AudioWAV>("Audio")
-		.addFunction("name", &AudioWAV::name)
-		.addConstructor<AudioWAV*(*)(std::string)>()
-		//.addStaticFunction("new", &AudioWAV::lu_new)
-		.addFunction("end", &AudioWAV::operator~)
-		.addFunction("play", &AudioWAV::Play)
-		.addFunction("stop", &AudioWAV::Stop)
-		.addFunction("play_set_volume", &AudioWAV::SetVolume)
-		.addFunction("play_get_volume", &AudioWAV::GetVolume)
-		.addFunction("get_error", &AudioWAV::GetError)
-		.addData("left", &AudioWAV::pan_left, true)
-		.addData("right", &AudioWAV::pan_right, true)
-		.addData("distance", &AudioWAV::pan_left, true)
-		.addData("volume", &AudioWAV::volume, true)
-		//.addProperty("volume", &AudioWAV::GetVolume, &AudioWAV::SetVolume)
-	.endClass();
-	alu_global.beginClass<lu_col>("Color")
-		.addConstructor<lu_col(*)(int, int, int, int)>()
-		.addConstructor<lu_col(*)(int, int, int)>()
-		.addData("r", &lu_col::r, true)
-		.addData("g", &lu_col::g, true)
-		.addData("b", &lu_col::b, true)
-		.addData("a", &lu_col::a, true)
-	.endClass();
-	alu_global.beginNamespace("Alignment")
-		.addConstant("left", UI::Alignment::LEFT)
-		.addConstant("right", UI::Alignment::RIGHT)
-		.addConstant("center", UI::Alignment::CENTER)
-		.addConstant("top", UI::Alignment::TOP)
-		.addConstant("bottom", UI::Alignment::BOTTOM)
-	.endNamespace();
-	alu_global.beginClass<UI::GameOptionsBox>("__GameOptionBox")
-		.addData("alignment", &UI::GameOptionsBox::alignment)
-		.addData("title", &UI::GameOptionsBox::title)
-		.addData("options", &UI::GameOptionsBox::options)
-	.endClass();
-	alu_global.beginNamespace("Render")
-		.addFunction("SetDrawColor", std::function<void(lu_col)>([](lu_col _col) {
-			SDL_SetRenderDrawColor(__sdlRenderer, _col.r, _col.g, _col.b, _col.a);
-		}))
-		.addFunction("DrawLine", std::function<void(Vector2, Vector2)>([&](Vector2 start, Vector2 end) {
-			SDL_RenderDrawLine(__sdlRenderer, start.x, start.y, end.x, end.y);
-		}))
-		.addFunction("DrawRect", std::function<void(VectorRect)>([&](VectorRect r) {
-			SDL_Rect _r = r;
-			SDL_RenderDrawRect(__sdlRenderer, &_r);
-		}))
-		.addFunction("Clear", std::function<void()>([&]() {
-			SDL_RenderClear(__sdlRenderer);
-		}))
-		.addFunction("DrawText", &ImGui::TextForeground)
-		.addFunction("TextBox", &lu_new_textbox)
-		.addFunction("OptionsBox", &lu_new_optionsbox)
-		.addFunction("OptionsBoxAligned", &lu_new_optionsbox_WITHALIGNMENT)
-	.endNamespace();
-	int status = luaL_dostring(state, R"(
+		.addData("is_rendering", &Sprite::isRendering)
+					.addData("center_position", &Sprite::center_position)
+					.addData("layer", &Sprite::layer)
+					.addData("uv", &Sprite::uv)
+					.addData("transform", &Sprite::transform)
+					.addData("tile", &Sprite::uv_tile)
+					.addData("uv_final", &Sprite::uv_final, false)
+					.addFunction("set_uv", &Sprite::lua_set_uv)
+					.addFunction("lock", &Sprite::lockCamera)
+					.addFunction("unlock", &Sprite::unlockCamera)
+					.addFunction("update", &Sprite::Update)
+					.addData("pixel_sz", &Sprite::pixel_size, false)
+					.endClass();
+
+				alu_global.beginNamespace("cw")
+					.addFunction("get_item", &lu_cw_get_item)
+					.addFunction("addcond", &lu_cw_addcond)
+					.addFunction("getcond", &lu_cw_getcond)
+					.addFunction("load", &lu_cw_loadScene)
+					.addFunction("unload", &lu_cw_unloadScene)
+					.addFunction("reload", &lu_cw_reloadScene)
+					.addFunction("add_start", &lu_cw_add_start)
+					.addFunction("add_pre_update", &lu_cw_add_preu)
+					.addFunction("add_update", &lu_cw_add_update)
+					.addFunction("add_post_update", &lu_cw_add_postu)
+					.addFunction("add_pre_render", &lu_cw_add_prer)
+					.addFunction("delete_pre_render", &lu_cw_del_prer)
+					.addFunction("add_render_task", &lu_cw_add_render)
+					.addFunction("delete_render_task", &lu_cw_del_render)
+					.addFunction("delete_start", &lu_cw_del_start)
+					.addFunction("delete_pre_update", &lu_cw_del_preu)
+					.addFunction("delete_update", &lu_cw_del_update)
+					.addFunction("delete_post_update", &lu_cw_del_postu)
+					.addFunction("get_window", &lu_cw_get_window)
+					.addFunction("run_async", std::function<void(double, luabridge::LuaRef)>([](double delay, luabridge::LuaRef func) {
+					if (!func.isFunction()) {
+						cwError::push(cwError::CW_ERROR);
+						std::string t_name = lua_typename(state, func.type());
+						cwError::serrof("Unable to register async event : Event needs to be a function. Got %s", t_name.c_str());
+						cwError::pop();
+						return;
+					}
+					lu_cw_get_window()->asyncTasks.push_back(std::make_pair(std::make_pair(0, delay), func));
+						}))
+					.addFunction("set_overlay_enabled", std::function<void(bool)>([](bool s) {
+							setbitv(Window::WindowInstance->data, 2, s);
+						}))
+							.addFunction("overlay_uv", lu_cw_set_overlay_tile)
+							.addFunction("on", &lu_do_on)
+							.addFunction("re", &lu_cw_register_event)
+							.addFunction("ue", &lu_cw_unregister_event)
+							.addFunction("ce", std::function<void(std::string)>([](std::string name) {
+							std::unordered_map<std::string, luabridge::LuaRef> events = lu_SDL_Window_impl::__INSTANCE->events;
+							if (events.contains(name)) {
+								events.at(name)();
+							}
+								}))
+							.addFunction("add_interaction", &lu_cw_add_on_interact)
+									.addFunction("delete_interaction", &lu_cw_del_on_interact)
+									.addFunction("add_collision", &lu_cw_add_on_collide)
+									.addFunction("delete_collision", &lu_cw_del_on_collide)
+									.addFunction("get_sprite", &Sprite::getElementByID)
+									.addFunction("get_particle", &ParticleEffect::getElementByID)
+									.addFunction("associate_player", std::function<void(Sprite*)>([](Sprite* s) {
+									lu_cw_get_window()->player_sprite = s;
+										}))
+									.addFunction("get_player", std::function<Sprite * ()>([]() {
+											return lu_cw_get_window()->player_sprite;
+										}))
+											.addVariable("is_interacting", &UI::GameTextBox::isInteracting)
+											.addFunction("m_runInteraction", std::function <bool(std::string)>([](std::string id) -> bool {
+
+											if (UI::GameTextBox::isInteracting) {
+												return false;
+											}
+											CWItem* i = nullptr;
+											if (i = Window::WindowInstance->scene->getItemByID(id)) {
+												i->SendToInventory(CWInventory::getInventoryByID("player_inventory"));
+												return true;
+											}
+											if (!__lu_on_interact_funcs.contains(id)) { return false; }
+											__lu_on_interact_funcs.at(id)();
+											return true;
+												}))
+											.beginNamespace("Camera")
+													.addProperty("position", Camera::lu_GetPosition, Camera::lu_SetPosition)
+													.addFunction("target", Camera::lu_SetTarget)
+													.addProperty("zoom", Camera::lu_GetScale, Camera::lu_SetScale)
+													.endNamespace()
+													.endNamespace();
+
+												alu_global.beginNamespace("Time")
+													.addProperty("DeltaTime", &lu_get_dt_scaled)
+													.addVariable("DeltaTimeUnscaled", &Time::DeltaTimeUnscaled, false)
+													.addVariable("fps", &Time::fps, false)
+													.addProperty("DeltaTimeScale", &lu_get_dt_scale_val)
+													.beginClass<Time::Timer>("Timer")
+													.addConstructor<Time::Timer(*)()>()
+													.addData("elapsed", &Time::Timer::elapsed, false)
+													.addFunction("start", &Time::Timer::Start)
+													.addFunction("end", &Time::Timer::End)
+													.endClass()
+													.endNamespace();
+												alu_global.beginNamespace("console")
+													.addFunction("log", &lu_logmsg)
+													.addFunction("error", &lu_logerr)
+													.addFunction("warn", &lu_logwrn)
+													.addFunction("debug", &lu_logdeb)
+													.addFunction("cout", &lu_logsil)
+													.endNamespace();
+												alu_global
+													.addFunction("print", &lu_logsil) // Override print, and have it print to the debug console.
+													;
+												alu_global.beginClass<RectCollider2d>("RectCollider")
+													.addStaticFunction("new", &RectCollider2d::lu_new_fromi)
+													.addStaticFunction("new_centered", &RectCollider2d::lu_new_fromic)
+													.addStaticFunction("from_rect", &RectCollider2d::lu_new_fromr)
+													.addStaticFunction("from_sprite", &lu_new_froms)
+													.addData("layer", &RectCollider2d::layer)
+													.addProperty("id",
+														std::function <std::string(const RectCollider2d*)>([](const RectCollider2d* s) {
+															return s->id;
+															}),
+														std::function <void(RectCollider2d*, std::string)>([](RectCollider2d* s, std::string id) {
+															s->id = id;
+															})
+													)
+													.addProperty("x",
+														std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->x; }),
+														std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->x = v; })
+													)
+																.addProperty("y",
+																	std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->y; }),
+																	std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->y = v; })
+																)
+																.addProperty("w",
+																	std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->w; }),
+																	std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->w = v; })
+																)
+																.addProperty("h",
+																	std::function <int(const RectCollider2d*)>([](const RectCollider2d* r) {return r->rect->h; }),
+																	std::function <void(RectCollider2d*, int)>([](RectCollider2d* r, int v) {r->rect->h = v; })
+																)
+																.addStaticFunction("dump_debug", &RectCollider2d::dump_debug)
+																.endClass();
+															// I despise programming like this
+															alu_global.beginNamespace("Raycast")
+																.addFunction("line", &Collider::Raycast::Test) // Raycast and check for specific type of collider
+																.addFunction("circle", &Collider::Raycast::TestCircle)
+																.addFunction("cone", &Collider::Raycast::TestCone)
+																.addFunction("any_line", &Collider::Raycast::TestAnyLine)
+																.addFunction("any_circle", &Collider::Raycast::TestAnyCircle)
+																.addFunction("any_cone", &Collider::Raycast::TestAnyCone)
+																.addFunction("any_line_except", &Collider::Raycast::TestExcept)
+																.addFunction("any_circle_except", &Collider::Raycast::TestCircleExcept)
+																.addFunction("any_cone_except", &Collider::Raycast::TestConeExcept)
+																.endNamespace();
+															alu_global.beginNamespace("RaycastHit")
+																.addVariable("start", &Collider::Hit::start, false)
+																.addVariable("end", &Collider::Hit::end, false)
+																.addVariable("length", &Collider::Hit::length, false)
+																.addVariable("pos", &Collider::Hit::pos, false)
+																.addVariable("hasHit", &Collider::Hit::hasHit, false)
+																.addVariable("layer", &Collider::Hit::layer, false)
+																.addVariable("id", &Collider::Hit::col_id, false)
+																.endNamespace();
+															alu_global.beginClass<ParticleEffects::stub>("ParticleEffectType")
+																.addData("meta", &ParticleEffects::stub::meta)
+																.addData("uv", &ParticleEffects::stub::uv)
+																.addData("id", &ParticleEffects::stub::id)
+																.addStaticData("RAIN", &ParticleEffects::RAIN, false)
+																.addStaticData("BLOOD", &ParticleEffects::BLOOD, false)
+																.addStaticData("SNOW", &ParticleEffects::SNOW, false)
+																.addStaticData("FLAME", &ParticleEffects::FLAME, false)
+																.endClass();
+															alu_global.beginClass<ParticleEffect>("Particle")
+																.addConstructor<ParticleEffect* (*)(ParticleEffects::stub, int)>()
+																.addData("uv", &ParticleEffect::m_uv)
+																.addProperty("direction",
+																	std::function<float(const ParticleEffect*)>([](const ParticleEffect* e) {return alib_rad2deg(e->m_dir_angle_rad); }),
+																	std::function<void(ParticleEffect*, float)>([](ParticleEffect* e, float a) {
+																		e->m_dir_angle_rad = alib_deg2rad(a);
+																		}))
+																.addData("layer", &ParticleEffect::m_layer)
+																			.addData("lifetime", &ParticleEffect::m_lifetime)
+																			.addData("pos", &ParticleEffect::start_pos)
+																			.addData("randomness", &ParticleEffect::m_randomness)
+																			.addFunction("add", &ParticleEffect::append)
+																			.addFunction("remove", &ParticleEffect::pop)
+																			.endClass();
+																		alu_global.beginNamespace("math")
+																			.addFunction("lerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
+																			return (start + (end - start) * percent);
+																				}))
+																			.addFunction("clerp", std::function <Vector2(Vector2, Vector2, float percent)>([](Vector2 start, Vector2 end, float percent) -> Vector2 {
+																					return alib_clamp((start + (end - start) * percent), start, end);
+																				}))
+																					.endNamespace();
+																				alu_global.beginClass<AudioWAV>("Audio")
+																					.addFunction("name", &AudioWAV::name)
+																					.addConstructor<AudioWAV* (*)(std::string)>()
+																					//.addStaticFunction("new", &AudioWAV::lu_new)
+																					.addFunction("end", &AudioWAV::operator~)
+																					.addFunction("play", &AudioWAV::Play)
+																					.addFunction("stop", &AudioWAV::Stop)
+																					.addFunction("play_set_volume", &AudioWAV::SetVolume)
+																					.addFunction("play_get_volume", &AudioWAV::GetVolume)
+																					.addFunction("set_pos", std::function<void(AudioWAV*, Vector2)>([](AudioWAV* w, Vector2 p) {
+																					Vector2 t = *Camera::GetInstance()->m_target;
+																					Mix_SetPosition(w->selectedChannel, Vector2::angle(t, p), Vector2::distancef(t, p));
+																						}))
+																					.addFunction("get_error", &AudioWAV::GetError)
+																							.addData("left", &AudioWAV::pan_left, true)
+																							.addData("right", &AudioWAV::pan_right, true)
+																							.addData("distance", &AudioWAV::pan_left, true)
+																							.addData("volume", &AudioWAV::volume, true)
+																							//.addProperty("volume", &AudioWAV::GetVolume, &AudioWAV::SetVolume)
+																							.endClass();
+																						alu_global.beginClass<lu_col>("Color")
+																							.addConstructor<lu_col(*)(int, int, int, int)>()
+																							.addConstructor<lu_col(*)(int, int, int)>()
+																							.addData("r", &lu_col::r, true)
+																							.addData("g", &lu_col::g, true)
+																							.addData("b", &lu_col::b, true)
+																							.addData("a", &lu_col::a, true)
+																							.endClass();
+																						alu_global.beginNamespace("Alignment")
+																							.addConstant("left", UI::Alignment::LEFT)
+																							.addConstant("right", UI::Alignment::RIGHT)
+																							.addConstant("center", UI::Alignment::CENTER)
+																							.addConstant("top", UI::Alignment::TOP)
+																							.addConstant("bottom", UI::Alignment::BOTTOM)
+																							.endNamespace();
+																						alu_global.beginClass<UI::GameOptionsBox>("__GameOptionBox")
+																							.addData("alignment", &UI::GameOptionsBox::alignment)
+																							.addData("title", &UI::GameOptionsBox::title)
+																							.addData("options", &UI::GameOptionsBox::options)
+																							.endClass();
+																						alu_global.beginNamespace("Render")
+																							.addFunction("SetDrawColor", std::function<void(lu_col)>([](lu_col _col) {
+																							SDL_SetRenderDrawColor(__sdlRenderer, _col.r, _col.g, _col.b, _col.a);
+																								}))
+																							.addFunction("DrawLine", std::function<void(Vector2, Vector2)>([&](Vector2 start, Vector2 end) {
+																									SDL_RenderDrawLine(__sdlRenderer, start.x, start.y, end.x, end.y);
+																								}))
+																									.addFunction("DrawRect", std::function<void(VectorRect)>([&](VectorRect r) {
+																									SDL_Rect _r = r;
+																									SDL_RenderDrawRect(__sdlRenderer, &_r);
+																										}))
+																									.addFunction("Clear", std::function<void()>([&]() {
+																											SDL_RenderClear(__sdlRenderer);
+																										}))
+																											.addFunction("DrawText", &ImGui::TextForeground)
+																											.addFunction("TextBox", &lu_new_textbox)
+																											.addFunction("OptionsBox", &lu_new_optionsbox)
+																											.addFunction("OptionsBoxAligned", &lu_new_optionsbox_WITHALIGNMENT)
+																											.addFunction("Inventory", &lu_cw_render_player_inventory)
+																											.endNamespace();
+																										int status = luaL_dostring(state, R"(
 		printf = function(s,...)
 			return print(s:format(...))
         end -- function
@@ -820,18 +981,21 @@ alib_inline_run _nn([&]() {
 			return helper(...)
 		end
 	)");//
-	if (status) {
-		// since the error message includes the script which we're trying
-		// to parse, the result has unbounded length; so use another
-		// ostringstream to hold the error message
-		std::ostringstream errmsg;
-		int parseError1_pos = lua_gettop(state);
-		std::cout << "Errors parsing the following script:" << std::endl;
-		std::cout << "debug.lua" << std::endl << std::endl;
-		std::cout << "Parser error when interpreting as an expression:" << std::endl;
-		std::cout << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
-	}
-	
+																										if (status) {
+																											// since the error message includes the script which we're trying
+																											// to parse, the result has unbounded length; so use another
+																											// ostringstream to hold the error message
+																											std::ostringstream errmsg;
+																											int parseError1_pos = lua_gettop(state);
+																											std::cout << "Errors parsing the following script:" << std::endl;
+																											std::cout << "debug.lua" << std::endl << std::endl;
+																											std::cout << "Parser error when interpreting as an expression:" << std::endl;
+																											std::cout << lua_tostring(state, parseError1_pos) << std::endl << std::endl;
+																										}
+
+}
+alib_inline_run _nn([&]() {
+	defineLuaImpl();
 });
 void __lu_RenderTaskImpl() {
 	for (int i = 0; i < __renderTasks.size(); i++) {
@@ -840,6 +1004,7 @@ void __lu_RenderTaskImpl() {
 	}
 	__renderTasks.clear();
 }
+
 
 
 

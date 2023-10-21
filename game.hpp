@@ -6,8 +6,8 @@
 #define CWL_DEBUG
 #include "engine.hpp"
 #include "input.h"
-#define Win_width 720
-#define Win_height 720
+#define Win_width 512
+#define Win_height 512
 Window* Window::WindowInstance = new Window(::GetConsoleWindow(), false, "\0", Win_width, Win_height);;
 Window* window = Window::WindowInstance;
 
@@ -37,6 +37,10 @@ Window::Initializer __init_window_f{
 		alib_assert_p(!&__lu_component_impl, "LUA Component Manager not initialized, unable to run!");
 		Window::WindowInstance->AddComponent(&__lu_component_impl);
 		SDL_MaximizeWindow(Window::WindowInstance->SDL_WIND);
+		SDL_SetWindowMinimumSize(Window::WindowInstance->SDL_WIND, Win_width, Win_height);
+
+		// Lock the cursor to the window
+
 		cwError::onError = [](const char* errv, uint32_t errs) {
 			if (errs == cwError::CW_NONE) {
 				Win->cons.pushf("%s\n", errv);
@@ -265,6 +269,8 @@ Window::Initializer _nn{
 		Win->OnFocusLost = []() {};
 		Win->OnMaximize = []() {};
 		Win->OnMinimize = []() {};
+		Win->PreUpdate = []() {
+		};
 		Win->Update = []() {
 			if (!Win->hasFocus) {
 				Sleep(30);
@@ -290,8 +296,8 @@ Window::Initializer _nn{
 					alib_remove_any_of<MeshLine*>(MeshCollider2d::_mGlobalColArr[m]->lines, nullptr);
 					for (size_t l = 0; l < MeshCollider2d::_mGlobalColArr[m]->lines.size(); l++) {
 						MeshLine* line = MeshCollider2d::_mGlobalColArr[m]->lines[l];
-						Vector2 s = line->start + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
-						Vector2 e = line->end + -*Camera::GetInstance()->m_target + Camera::GetInstance()->m_Offset;
+						Vector2 s = line->start + -*Camera::GetInstance()->m_target + (Camera::GetInstance()->m_Viewport * 0.5f);
+						Vector2 e = line->end + -*Camera::GetInstance()->m_target +   (Camera::GetInstance()->m_Viewport * 0.5f);
 						SDL_SetRenderDrawColor(Win->SDL_REND, 0, 0, 255, 128);
 						SDL_RenderDrawLine(Win->SDL_REND, s.x, s.y, e.x, e.y);
 						// Only render line bounds if we're not in the editor- It's for debugging purposes!

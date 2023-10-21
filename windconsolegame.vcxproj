@@ -85,6 +85,8 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>.\build\tra\lib\</OutDir>
     <TargetName>cw</TargetName>
+    <AllProjectIncludesArePublic>true</AllProjectIncludesArePublic>
+    <AllProjectBMIsArePublic>true</AllProjectBMIsArePublic>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -227,7 +229,6 @@
   <ItemGroup>
     <ClInclude Include="editor.h" />
     <ClInclude Include="global.h" />
-    <ClInclude Include="guiRendererDefs.hpp" />
     <ClCompile Include="imgui\imgui.cpp" />
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_impl_sdl.cpp" />
@@ -277,20 +278,18 @@
     <ClInclude Include="Vectors.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="build\tra\test.lua" />
     <None Include="cpp.hint" />
     <None Include="out\lib\debug.lua" />
     <None Include="out\lib\lua\global.lua" />
     <None Include="out\main.cwl" />
     <None Include="out\main.lua" />
-    <None Include="out\test.cwl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties out_4test_1cwl__JsonSchema="" />
+      <UserProperties />
     </VisualStudio>
   </ProjectExtensions>
 </Project>

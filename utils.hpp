@@ -46,6 +46,8 @@
       // Note: semicolon is NOT needed, as if it's put at the end, it will produce an intellisense warning. Apparently it's by design. Ignore it if it happens.
       // Original impl: https://github.com/avetharun/avetharun/blob/bf49a022c7021fb3200231722f7975f167e1cf9f/ave_libs.hpp#L308
                        // Also added assert handling
+#pragma warning (push)
+#pragma warning (disable : 4996)
 #include <string>
 #include <assert.h>
 #include <vector>
@@ -53,6 +55,15 @@
 #include <unordered_map>
 #include <format>
 #include <stdarg.h>
+
+#ifdef _WIN32
+#define ALIB_WIN
+
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
+
 #define _ALIB_FQUAL static inline
 std::string ___nn_alib_error_charp_str;
 
@@ -992,23 +1003,35 @@ _ALIB_FQUAL size_t alib_va_arg_length(const char* fmt, va_list args) {
     size_t bufsz = vsnprintf(NULL, 0, fmt, args);
     return bufsz;
 }
+// Opens a URL externally
+_ALIB_FQUAL void alib_urlhttpopen_ext(alib_string url) {
+#ifdef ALIB_WIN
+    ShellExecuteA(0, 0, url, 0, 0, SW_SHOW);
+#endif
+}
 
+_ALIB_FQUAL alib_string alib_urlhttpget(alib_string url) {
+#ifdef ALIB_WIN
+
+
+#endif
+}
 
 _ALIB_FQUAL alib_string alib_strfmtv(const char* fmt, va_list args) {
     size_t bufsz = vsnprintf(NULL, 0, fmt, args);
-    char* _buf = new char[bufsz + 1];
-    vsnprintf(_buf, bufsz+1, fmt, args);
-    return _buf;
+    alib_string m_out = std::string("\0", bufsz);
+    vsnprintf(m_out.data(), bufsz + 1, fmt, args);
+    return m_out.data();
 }
 _ALIB_FQUAL alib_string alib_strfmt(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     size_t bufsz = 0;
     bufsz = vsnprintf(NULL, 0, fmt, args);
-    char* _buf = new char[bufsz + 1];
-    vsnprintf(_buf, bufsz+1, fmt, args);
+    alib_string m_out = std::string("\0", bufsz);
+    vsnprintf(m_out.data(), bufsz + 1, fmt, args);
     va_end(args);
-    return _buf;
+    return m_out;
 }
 #define alib_strfmts alib_strfmt
 #define alib_strfmtsv alib_strfmtv
@@ -1410,6 +1433,7 @@ bool alib_j_cokeys(___alib__json j, std::string _s) {
 }
 #undef JSONREF
 
+#pragma warning (pop)
 #endif
 
 

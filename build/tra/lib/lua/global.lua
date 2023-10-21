@@ -25,6 +25,19 @@ uvpsy = 347
 uvpsx_p = 0
 uvpsy_p = 508
 
+DEFAULT_ITEM_CLICK_TASK = function(item)
+	mItemCandleOptions = ABT();
+	mItemCandleOptions:addBool("Drop")
+
+	Render.OptionsBoxAligned("Item Modal VGUI", mItemCandleOptions, function(options)
+		if (options:getBool("Drop")) then
+			inventory = CWInventory.getinventory("player_inventory")
+			inventory:drop(inventory:getSlotOfID(item.data:getString("id")), cw.Camera.position, item.data:getString("id"))
+			return
+		end
+	end, Alignment.center)
+end
+
 
 uvpw = 24
 uvph = 32
@@ -58,6 +71,7 @@ tick_sprite_tile = function(amt)
 	end
 
 end
+player_inventory_is_shown = false
 direction = "up"
 cw.add_update("player_controller", function()
 	if (__window.is_editor) then
@@ -140,6 +154,9 @@ cw.add_update("player_controller", function()
 	if input.key_pressed(input.K_grave) then
 		__window.debug_window = not __window.debug_window
 	end
+	if input.key_pressed(input.K_q) then
+		cw.ce("show_player_inventory")
+	end
 	if input.key_pressed(input.K_pause) then
 		__window.debug = not __window.debug
 		if (not __window.debug) then 
@@ -154,4 +171,46 @@ cw.re("clothes_pajamas", function()
 end)
 cw.re("clothes_default", function() 
 	_player.uv = m_DF_UV
+end)
+cw.re("player_sleep", function() 
+	_player.uv = m_DF_UV
+end)
+-- No darkness overlay (full brightness)
+cw.re("darkness:0", function()
+	cw.addcond("darkness", 0)
+	cw.addcond("player_light", 0)
+	cw.overlay_uv(0,91)
+	cw.set_overlay_enabled(false)
+end)
+cw.re("darkness:1", function()
+	cw.addcond("darkness", 1)
+	cw.addcond("player_light", 0)
+	cw.overlay_uv(0,91)
+	cw.set_overlay_enabled(true)
+end)
+cw.re("darkness:2", function()
+	cw.addcond("darkness", 1)
+	cw.addcond("player_light", 1)
+	cw.overlay_uv(256,91)
+	cw.set_overlay_enabled(true)
+end)
+cw.re("scene_transition_blackout", function()
+end)
+
+player_inventory = CWInventory("Inventory")
+player_inventory.max_items = 5
+cw.re("show_player_inventory", function()
+	player_inventory_is_shown = not player_inventory_is_shown
+end)
+CWInventory.assign("player_inventory", player_inventory)
+
+cw.add_pre_render("inventory_vgui", function() 
+	if (player_inventory_is_shown) then
+		__window.cursor_show = true
+		Render.Inventory(player_inventory)
+	else 
+	
+		__window.cursor_show = false
+
+	end
 end)

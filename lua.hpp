@@ -5,7 +5,6 @@
 #include "LUA_INCLUDE.h"
 
 #include "input.h"
-#include "engine.hpp"
 
 #include "utils.hpp"
 struct lua_context {
@@ -14,6 +13,8 @@ struct lua_context {
 };
 lua_State* lua_context::state = nullptr;
 lua_State* _lstate;
+
+lua_State* state = luaL_newstate(); // create and init lua
 void initLUA(lua_State* state_) {
 	_lstate = state_;
 	

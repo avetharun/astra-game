@@ -10,10 +10,11 @@
 #include <vector>
 #include <stack>
 #include <array>
-#include "cwerror.h"
+#include "../cwlib/cwerror.h"
 #ifndef PI
 #define PI 3.14159265358979323846
 #endif
+#include "../Vectors.hpp"
 
 
 enum {
@@ -214,12 +215,23 @@ namespace ImGui {
 		ImDrawList* draw_list = GetWindowDrawList();
 		draw_list->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), col, border_radii, 0, thickness);
 	}
+	static inline void ForegroundRectFilled(ImVec2 pos, ImVec2 size, ImColor col, float border_radii = 0) {
+		ImDrawList* draw_list = GetForegroundDrawList();
+		draw_list->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), col, border_radii, 0);
+	}
+	static inline void ForegroundRectUnfilled(ImVec2 pos, ImVec2 size, ImColor col, float border_radii = 0, float thickness = 4.0f) {
+		ImDrawList* draw_list = GetForegroundDrawList();
+		draw_list->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), col, border_radii, 0, thickness);
+	}
 	static inline void DrawLine(ImVec2 start, ImVec2 end, ImColor col = IM_COL32(255, 0, 0, 255), float thickness = 3.0f) {
 		ImDrawList* draw_list = GetWindowDrawList();
 		draw_list->AddLine(start, end, col, thickness);
 	}
 	static inline void TextForeground(std::string text, Vector2 pos) {
 		ImGui::GetForegroundDrawList()->AddText({ (float)pos.x, (float)pos.y}, GetColorU32(ImGuiCol_Text), text.c_str());
+	}
+	static inline void IMTextForeground(std::string text, ImVec2 pos) {
+		ImGui::GetForegroundDrawList()->AddText(pos, GetColorU32(ImGuiCol_Text), text.c_str());
 	}
 	static inline void TextBackground(std::string text, Vector2 pos) {
 		ImGui::GetBackgroundDrawList()->AddText({ (float)pos.x, (float)pos.y }, GetColorU32(ImGuiCol_Text), text.c_str());
@@ -357,11 +369,17 @@ namespace ImGui {
 		ImGui::InputText(label, buf, buf_size, flags, callback, user_data);
 		ImGui::SetCursorPos(l_pos);
 	}
-	static inline void ImagePositioned(ImTextureID texid, ImVec2 begin, ImVec2 size, bool centered=true) {
+	static inline void ImagePositioned(ImTextureID texid, ImVec2 begin, ImVec2 size, Vector2 uv0, Vector2 uv1) {
 		ImVec2 l_pos = ImGui::GetCursorPos();
-		ImGui::SetCursorPos(ImVec2(begin.x-1, begin.y-1));
-		ImGui::GetWindowDrawList()->AddImage(texid, { begin.x - (size.x * 0.5f), begin.y - (size.y * 0.5f)}, {begin.x + size.x, begin.y + size.y});
+		ImGui::SetCursorPos(ImVec2(begin.x - 1, begin.y - 1));
+		ImGui::GetWindowDrawList()->AddImage(texid, { begin.x - (size.x * 0.5f), begin.y - (size.y * 0.5f) }, { begin.x + size.x, begin.y + size.y }, uv0, uv1);
 		ImGui::SetCursorPos(l_pos);
+	}
+	static inline void IMImagePositioned(ImTextureID texid, ImVec2 begin, ImVec2 size, ImVec2 uv0, ImVec2 uv1) {
+		ImGui::GetWindowDrawList()->AddImage(texid, { begin.x, begin.y }, { begin.x + size.x, begin.y + size.y }, uv0, uv1);
+	}
+	static inline void ForegroundImagePositioned(ImTextureID texid, ImVec2 begin, ImVec2 size, ImVec2 uv0, ImVec2 uv1) {
+		ImGui::GetForegroundDrawList()->AddImage(texid, { begin.x, begin.y}, { begin.x + size.x, begin.y + size.y }, uv0, uv1);
 	}
 	// An arrow drawn to look like a "back arrow" from android. Defaults to  pointing left.
 	// See: https://i.stack.imgur.com/avYnD.png
@@ -459,7 +477,7 @@ namespace ImGui {
 		ImGui::GetForegroundDrawList()->AddRectFilled(ideal_pos, ideal_size, ret ? col_btn_active : col_btn, radius);
 		//ImGui::GetForegroundDrawList()->AddCircleFilled(ideal_pos, radius, ret ? col_btn_active : col_btn);
 		ImVec2 __offset = { ideal_size.x * 0.3f, ideal_size.y * 0.3f };
-		ImGui::TextForeground(std::string(label, 1).c_str(), { ideal_pos.x + __offset.x, ideal_pos.y + __offset.y });
+		ImGui::TextForeground(std::string(label, 1).c_str(), Vector2{ ideal_pos.x + __offset.x, ideal_pos.y + __offset.y });
 		ImGui::SetCursorScreenPos(sp);
 		ImGui::SetCursorPos(p);
 		return ret;

@@ -1,8 +1,7 @@
 #ifndef AST_E_KEYBINDINGS
 #define AST_E_KEYBINDINGS
 #include "utils.hpp"
-#include "utils.hpp"
-
+#include <SDL2/SDL.h>
 class Input {
 	public:
 		struct Mouse {
@@ -19,33 +18,33 @@ class Input {
 		struct Keyboard {
 			static inline bool input_stolen;
 			static inline char keys[1024]{};
-			static inline char key_frame[1024]{};
+			static inline char keys_frame[1024]{};
+			static inline char keys_frame_last[1024]{};
 			static inline std::function <void(unsigned char)> onKeyPress = [](unsigned char) {};
 			static inline std::function <void(unsigned char)> onKeyRelease = [](unsigned char) {};
 			static inline std::function <void(unsigned char)> onKeyHold = [](unsigned char) {};
 
 			static void EmulateKeyboardDown(unsigned char key, SDL_Event ev) {
 				keys[key] = true;
-				if (key_frame[key] == -12) {
-					key_frame[key] = true;
-					onKeyPress(key);
-					return;
-				}
 				onKeyHold(key);
 			}
 			static void EmulateKeyboardUp(unsigned char key, SDL_Event ev) {
 				keys[key] = false;
-				key_frame[key] = -12;
 				onKeyRelease(key);
 			}
 			static bool GetKey(int k) { // Is Key pressed?
 				return keys[k];
 			}
 			static bool GetKeyPressed(int k) { // Key pressed this frame?
-				return key_frame[k];
+				return keys_frame[k] && !keys_frame_last[k];
 			}
 			static void flush() {
 				memset(keys, 0, 1024);
+				memset(keys_frame, 0, 1024);
+			}
+			static void update() {
+				memcpy(keys_frame_last, keys_frame, 1024);
+				memcpy(keys_frame, keys, 1024);
 			}
 		};
 		static inline int K_UNKNOWN = 0;
@@ -265,11 +264,17 @@ class Input {
 			}
 			return K_UNKNOWN;
 		}
-		static alib_string GetKeyName(int key) {
+		static std::string GetKeyName(int key) {
 			if (m_keys__reverse.contains(key)) {
 				return m_keys__reverse.at(key);
 			}
 			return "k_unknown";
+		}
+		static std::string GetKeyNameFriendly(int key) {
+			if (m_keys__reverse.contains(key)) {
+				return m_keys__reverse.at(key).substr(2);
+			}
+			return "unknown";
 		}
 };
 #endif
